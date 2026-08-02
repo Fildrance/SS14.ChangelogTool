@@ -17,7 +17,12 @@
       <RepositoryUrl>https://github.com/space-wizards/SS14.ChangelogTool.git</RepositoryUrl>
       <PackageLicenseExpression>MIT</PackageLicenseExpression>
       <PackageTags>ss14;changelog;space-station-14</PackageTags>
+      <PackageReadmeFile>README.Usage.md</PackageReadmeFile>
     </PropertyGroup>
+
+    <ItemGroup>
+      <None Include="..\README.Usage.md" Pack="true" PackagePath="\" />
+    </ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="GraphQL.Client" Version="6.1.0" />

@@ -27,7 +27,7 @@ public class ChangelogFileManager(ILogger<ChangelogFileManager> logger, IFileSys
     /// <inheritdoc/>
     public DateTimeOffset GetLastMergedTimeFromChangelogs(string changelogDir, IReadOnlyCollection<string>? extraCategories = null)
     {
-        var allCategories = new HashSet<string> { "Changelog" };
+        var allCategories = new HashSet<string> { _options.PrimaryChangelog };
         if (extraCategories is not null)
             allCategories.UnionWith(extraCategories);
 

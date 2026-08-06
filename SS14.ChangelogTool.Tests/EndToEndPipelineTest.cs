@@ -317,14 +317,18 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         Assert.Equal(originalContent, updatedContent);
     }
 
-    [Fact]
-    public void UpdateWithMultipleChangeTypesInOnePREntry()
+    [Theory]
+    [InlineData(null)] // Allows us to test primary changelog as well
+    [InlineData("Admin")]
+    [InlineData("Maps")]
+    [InlineData("Rules")]
+    public void UpdateWithMultipleChangeTypesInOnePREntryAndPrimaryChangelog(string? primaryChangelog = null)
     {
         // Arrange
         var services = new ServiceCollection();
         services.RegisterDependencies();
 
-        OverrideOptions(services);
+        OverrideOptions(services, primaryChangelog: primaryChangelog);
 
         services.RemoveAll<IGitHubPullRequestService>();
         var ghService = Substitute.For<IGitHubPullRequestService>();
@@ -359,59 +363,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         parseResult.Invoke();
 
         // Assert
-        var changelogPath = Path.Combine(virtualDir, "Changelog.yml");
-        var updatedContent = File.ReadAllText(changelogPath);
-
-        // Verify all change types appear
-        Assert.Contains("Added something new", updatedContent);
-        Assert.Contains("Fixed a bug", updatedContent);
-        Assert.Contains("Tweaked some values", updatedContent);
-        Assert.Contains("Removed old thing", updatedContent);
-    }
-    
-    [Fact]
-    public void UpdateWithModifiedPrimaryChangelog()
-    {
-        // Arrange
-        var services = new ServiceCollection();
-        services.RegisterDependencies();
-
-        OverrideOptions(services, primaryChangelog: "Admin");
-
-        services.RemoveAll<IGitHubPullRequestService>();
-        var ghService = Substitute.For<IGitHubPullRequestService>();
-        ghService.GetDiff(Arg.Any<DateTimeOffset>())
-            .Returns([
-                new GitHubPullRequest(
-                    Merged: true,
-                    """
-                    Big update with many changes!
-
-                    :cl:
-                    - add: Added something new
-                    - fix: Fixed a bug
-                    - tweak: Tweaked some values
-                    - remove: Removed old thing
-                    """,
-                    new GitHubUser("MultiChangeUser"),
-                    new DateTimeOffset(new DateTime(2023,8,20,9,30,0), TimeSpan.Zero),
-                    new GitHubPullRequestBase("master"),
-                    Number: 150,
-                    "https://example.com/pr/150"
-                )
-            ]);
-        services.AddSingleton(ghService);
-
-        var virtualDir = CopyExistingChangelogs();
-        var sp = services.BuildServiceProvider();
-        var command = sp.GetRequiredService<RootCommand>();
-
-        // Act
-        var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\"");
-        parseResult.Invoke();
-
-        // Assert
-        var changelogPath = Path.Combine(virtualDir, "Admin.yml");
+        var changelogPath = Path.Combine(virtualDir, $"{primaryChangelog ?? "Changelog"}.yml");
         var updatedContent = File.ReadAllText(changelogPath);
 
         // Verify all change types appear

@@ -368,6 +368,58 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         Assert.Contains("Tweaked some values", updatedContent);
         Assert.Contains("Removed old thing", updatedContent);
     }
+    
+    [Fact]
+    public void UpdateWithModifiedPrimaryChangelog()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        services.RegisterDependencies();
+
+        OverrideOptions(services, primaryCategory: "Admin");
+
+        services.RemoveAll<IGitHubPullRequestService>();
+        var ghService = Substitute.For<IGitHubPullRequestService>();
+        ghService.GetDiff(Arg.Any<DateTimeOffset>())
+            .Returns([
+                new GitHubPullRequest(
+                    Merged: true,
+                    """
+                    Big update with many changes!
+
+                    :cl:
+                    - add: Added something new
+                    - fix: Fixed a bug
+                    - tweak: Tweaked some values
+                    - remove: Removed old thing
+                    """,
+                    new GitHubUser("MultiChangeUser"),
+                    new DateTimeOffset(new DateTime(2023,8,20,9,30,0), TimeSpan.Zero),
+                    new GitHubPullRequestBase("master"),
+                    Number: 150,
+                    "https://example.com/pr/150"
+                )
+            ]);
+        services.AddSingleton(ghService);
+
+        var virtualDir = CopyExistingChangelogs();
+        var sp = services.BuildServiceProvider();
+        var command = sp.GetRequiredService<RootCommand>();
+
+        // Act
+        var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\"");
+        parseResult.Invoke();
+
+        // Assert
+        var changelogPath = Path.Combine(virtualDir, "Admin.yml");
+        var updatedContent = File.ReadAllText(changelogPath);
+
+        // Verify all change types appear
+        Assert.Contains("Added something new", updatedContent);
+        Assert.Contains("Fixed a bug", updatedContent);
+        Assert.Contains("Tweaked some values", updatedContent);
+        Assert.Contains("Removed old thing", updatedContent);
+    }
 
     #endregion
 
@@ -588,7 +640,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         return tempPath;
     }
 
-    private static void OverrideOptions(ServiceCollection services, int? maxLogEntries = null, string? extraCategories = null)
+    private static void OverrideOptions(ServiceCollection services, int? maxLogEntries = null, string? extraCategories = null, string? primaryCategory = null)
     {
         services.RemoveAll<IConfigureOptions<ChangelogToolOptions>>();
         var config = new ChangelogToolOptions
@@ -602,6 +654,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
             ExtraCategories = extraCategories,
             DiscordWebHook = "https://discord.com/api/webhooks/test",
             DiscordWebhookCharacterLimit = 2000,
+            PrimaryCategory = primaryCategory ?? "Changelog",
         };
         services.AddSingleton(Microsoft.Extensions.Options.Options.Create(config));
     }

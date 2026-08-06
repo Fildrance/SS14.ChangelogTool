@@ -11,7 +11,7 @@ namespace SS14.ChangelogTool.Services;
 public class ChangelogFileManager(ILogger<ChangelogFileManager> logger, IFileSystem fileSystem, IOptions<ChangelogToolOptions> options)
     : IChangelogFileManager
 {
-    private readonly int _maxChangelogEntries = options.Value.MaxChangelogEntries;
+    private readonly ChangelogToolOptions _options = options.Value;
 
     /// <summary>
     /// Emojis associated with a change type
@@ -101,7 +101,7 @@ public class ChangelogFileManager(ILogger<ChangelogFileManager> logger, IFileSys
         foreach (var (category, changelogEntries) in changelogParts)
         {
             var categoryFile = category == Constants.MainCategory
-                ? "Changelog"
+                ? _options.PrimaryCategory
                 : category;
 
             var changelogYmlPath = fileSystem.Path.Combine(changelogDir, $"{categoryFile}.yml");
@@ -128,7 +128,7 @@ public class ChangelogFileManager(ILogger<ChangelogFileManager> logger, IFileSys
                 result.Entries.Add(changelogEntry);
             }
 
-            var exceededBy = entries.Count - _maxChangelogEntries;
+            var exceededBy = entries.Count - _options.MaxChangelogEntries;
             if (exceededBy > 0)
             {
                 entries = entries.Skip(exceededBy)

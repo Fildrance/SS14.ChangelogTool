@@ -376,7 +376,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         var services = new ServiceCollection();
         services.RegisterDependencies();
 
-        OverrideOptions(services, primaryCategory: "Admin");
+        OverrideOptions(services, primaryChangelog: "Admin");
 
         services.RemoveAll<IGitHubPullRequestService>();
         var ghService = Substitute.For<IGitHubPullRequestService>();
@@ -640,7 +640,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         return tempPath;
     }
 
-    private static void OverrideOptions(ServiceCollection services, int? maxLogEntries = null, string? extraCategories = null, string? primaryCategory = null)
+    private static void OverrideOptions(ServiceCollection services, int? maxLogEntries = null, string? extraCategories = null, string? primaryChangelog = null)
     {
         services.RemoveAll<IConfigureOptions<ChangelogToolOptions>>();
         var config = new ChangelogToolOptions
@@ -654,7 +654,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
             ExtraCategories = extraCategories,
             DiscordWebHook = "https://discord.com/api/webhooks/test",
             DiscordWebhookCharacterLimit = 2000,
-            PrimaryChangelog = primaryCategory ?? "Changelog",
+            PrimaryChangelog = primaryChangelog ?? "Changelog",
         };
         services.AddSingleton(Microsoft.Extensions.Options.Options.Create(config));
     }

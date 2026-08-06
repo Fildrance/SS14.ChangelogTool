@@ -654,7 +654,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
             ExtraCategories = extraCategories,
             DiscordWebHook = "https://discord.com/api/webhooks/test",
             DiscordWebhookCharacterLimit = 2000,
-            PrimaryCategory = primaryCategory ?? "Changelog",
+            PrimaryChangelog = primaryCategory ?? "Changelog",
         };
         services.AddSingleton(Microsoft.Extensions.Options.Options.Create(config));
     }

@@ -101,7 +101,7 @@ public class ChangelogFileManager(ILogger<ChangelogFileManager> logger, IFileSys
         foreach (var (category, changelogEntries) in changelogParts)
         {
             var categoryFile = category == Constants.MainCategory
-                ? _options.PrimaryCategory
+                ? _options.PrimaryChangelog
                 : category;
 
             var changelogYmlPath = fileSystem.Path.Combine(changelogDir, $"{categoryFile}.yml");

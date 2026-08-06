@@ -318,8 +318,8 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
     }
 
     [Theory]
-    [InlineData(null)] // Allows us to test primary changelog as well
-    [InlineData("Admin")]
+    [InlineData(null)] // Base case
+    [InlineData("Admin")] // Modified primary changelog
     [InlineData("Maps")]
     [InlineData("Rules")]
     public void UpdateWithMultipleChangeTypesInOnePREntryAndPrimaryChangelog(string? primaryChangelog = null)

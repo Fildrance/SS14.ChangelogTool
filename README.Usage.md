@@ -6,8 +6,6 @@ Some of them are mandatory to start tool.
 ```
 # *MANDATORY* repository to inspect for missed changes in PRs
 REPO=space-wizards/space-station-14
-# *MANDATORY* branch to use as a base when gathering PRs. should probably be master or stable
-BRANCH=master
 # *MANDATORY* path to changelog files inside repo
 CHANGELOG_REPO_PATH=Resources/Changelog
 # comma-separated list of additional changelog categories; creates/updates separate YAML files like Admin.yml, Maps.yml, etc.

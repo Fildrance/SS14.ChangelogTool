@@ -635,7 +635,6 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         var config = new ChangelogToolOptions
         {
             Repo = "space-wizards/SS14.ChangelogTool",
-            Branch = "master",
             GithubToken = "fake-token",
             ChangelogRepoPath = ".",
             MaxPullRequestEntriesInGraphQLRequest = 1,

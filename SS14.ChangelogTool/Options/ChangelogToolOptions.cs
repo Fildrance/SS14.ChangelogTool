@@ -16,13 +16,6 @@ public sealed class ChangelogToolOptions
     public required string Repo { get; set; }
 
     /// <summary>
-    /// The branch to use as a base when gathering PRs. should probably be master or stable
-    /// </summary>
-    [Required]
-    [ConfigurationKeyName("BRANCH")]
-    public required string Branch { get; set; }
-
-    /// <summary>
     /// the relative path to the changelog directory. should probably be Resources/Changelog
     /// </summary>
     [Required]

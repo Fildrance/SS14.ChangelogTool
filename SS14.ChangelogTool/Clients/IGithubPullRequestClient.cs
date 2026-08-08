@@ -10,8 +10,7 @@ public interface IGithubPullRequestClient
     /// <summary>
     /// Extracts pull requests that have merge date greater, then provided date.
     /// </summary>
-    /// <param name="repo">Repo to inspect.</param>
-    /// <param name="branch">Branch to inspect.</param>
-    /// <param name="olderThen">Cutoff for merge date.</param>
-    Task<IReadOnlyCollection<GitHubPullRequest>> GetPullRequestsOlderThen(string repo, string branch, DateTimeOffset olderThen);
+    /// <param name="repo">Repo to inspect, includes both repository name and owner, as '{owner}\{repo}'.</param>
+    /// <param name="pullRequestNumbers">List of pull request numbers that we should retrieve.</param>
+    Task<IReadOnlyCollection<GitHubPullRequest>> GetPullRequests(string repo, IReadOnlyCollection<int> pullRequestNumbers);
 }

@@ -56,11 +56,10 @@ public sealed class ChangelogToolOptions
     public int DiscordWebhookCharacterLimit { get; set; } = 2000;
 
     /// <summary>
-    /// Maximum number of pages to go through in the graphQL. if you exceed this it means you have not updated the
-    /// changelog in months.
+    /// Amount of pull request entries to fetch in a single GraphQL request.
     /// </summary>
-    [ConfigurationKeyName("MAX_GRAPQHL_PAGES")]
-    public int MaxPages { get; set; } = 50;
+    [ConfigurationKeyName("MAX_PULL_REQUEST_ENTRIES_IN_GRAPHQL_REQUEST")]
+    public int MaxPullRequestEntriesInGraphQLRequest { get; set; } = 50;
 
     /// <summary>
     /// Maximum number of changelog entries to keep in each YAML file; older entries are pruned.

@@ -1,86 +1,68 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SS14.ChangelogTool.Clients;
-using SS14.ChangelogTool.Models;
 using SS14.ChangelogTool.Models.GitHub;
 using SS14.ChangelogTool.Options;
-using YamlDotNet.Serialization;
+using System.Text.RegularExpressions;
+using SS14.ChangelogTool.LocalGit;
 
 namespace SS14.ChangelogTool.Services;
 
 /// <inheritdoc/>
-public class GitHubPullRequestService(
-    HttpClient ghFileHttpClient,
+public partial class GitHubPullRequestService(
     IGithubPullRequestClient ghPullRequestClient,
+    ILocalGitRepository repository,
     IOptions<ChangelogToolOptions> options,
     ILogger<GitHubPullRequestService> logger
 ) : IGitHubPullRequestService
 {
     private readonly ChangelogToolOptions _options = options.Value;
-    private readonly ILogger<GitHubPullRequestService> _logger = logger;
 
-    private const string GithubRawDownloadBase = "https://raw.githubusercontent.com";
-
-    /// <inheritdoc/>
-    public DateTimeOffset GetNewestChangelogEntryMergeDateByRef(string refSha, IReadOnlyCollection<string> extraCategories)
-    {
-        var lastMergedTime = DateTimeOffset.MinValue;
-
-        var allCategories = new HashSet<string> { "Changelog" };
-        allCategories.UnionWith(extraCategories);
-
-        foreach (var category in allCategories)
-        {
-            var changelogContainer = GetChangelogByRef(refSha, category);
-            var categoryLastMergedTime = DateTimeOffset.MinValue;
-            foreach (var entry in changelogContainer.Entries)
-            {
-                if (string.IsNullOrWhiteSpace(entry.Time))
-                    continue;
-
-                var prMergeTime = DateTimeOffset.Parse(entry.Time.Replace("\'", string.Empty));
-                if (prMergeTime > categoryLastMergedTime)
-                    categoryLastMergedTime = prMergeTime;
-            }
-
-            if (lastMergedTime < categoryLastMergedTime)
-            {
-                lastMergedTime = categoryLastMergedTime;
-            }
-        }
-
-        return lastMergedTime;
-    }
+    [GeneratedRegex(@"\(#(\d+)\)\s*$", RegexOptions.None)]
+    private static partial Regex PullRequestNumberRegex();
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyCollection<GitHubPullRequest>> GetDiff(DateTimeOffset olderThen)
+    public async Task<IReadOnlyCollection<GitHubPullRequest>> GetDiff(string sinceSha)
     {
         var repo = _options.Repo;
-        var branch = _options.Branch;
-
-        var pullRequests = await ghPullRequestClient.GetPullRequestsOlderThen(repo, branch, olderThen);
-
-        pullRequests = pullRequests.OrderBy(item => item.MergedAt!.Value)
-            .ToList();
-
-        return pullRequests;
-    }
-
-    private ChangelogContainer GetChangelogByRef(string sinceRefSha, string category)
-    {
-        var refChangelogUrl = $"{GithubRawDownloadBase}/{_options.Repo}/{sinceRefSha}/{_options.ChangelogRepoPath}/{category}.yml";
-        HttpRequestMessage request = new(HttpMethod.Get, refChangelogUrl);
-        request.Headers.Add("Authorization", $"Bearer {_options.GithubToken}");
-        var response = ghFileHttpClient.Send(request);
-        if (!response.IsSuccessStatusCode)
+        
+        HashSet<int> pullRequestNumbers = new();
+        
+        var commitsSinceSha = repository.GetCommitsSince(sinceSha);
+        foreach (var commit in commitsSinceSha)
         {
-            throw new Exception("Could not get changelog content: " + response.Content.ReadAsStringAsync().Result);
+            var match = PullRequestNumberRegex().Match(commit.MessageShort);
+            if (!match.Success)
+            {
+                logger.LogWarning(
+                    "Commit {CommitSha} does not have a pull request number in its message: {CommitMessage}",
+                    commit.Sha,
+                    commit.MessageShort
+                );
+                continue;
+            }
+
+            var number = match.Groups[1].Value;
+            if (!int.TryParse(number, out var prNumber))
+            {
+                logger.LogWarning(
+                    "Commit {CommitSha} have problematic pattern in its message "
+                    + "- it have PR number but it is not a valid number. Commit message: {CommitMessage}",
+                    commit.Sha,
+                    commit.MessageShort
+                ); 
+                continue;
+            }
+
+            pullRequestNumbers.Add(prNumber);
         }
 
-        using var reader = new StreamReader(response.Content.ReadAsStream());
-        var deserializer = new DeserializerBuilder()
-            .Build();
+        logger.LogInformation("Collected {count} pull request numbers since {sha}", pullRequestNumbers.Count, sinceSha);
 
-        return deserializer.Deserialize<ChangelogContainer>(reader);
+        var pullRequests = await ghPullRequestClient.GetPullRequests(repo, pullRequestNumbers);
+        pullRequests = pullRequests.OrderBy(item => item.MergedAt)
+                                   .ToList();
+
+        return pullRequests;
     }
 }

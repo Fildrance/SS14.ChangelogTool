@@ -28,6 +28,7 @@ public interface IChangelogFileManager
     /// </summary>
     /// <param name="changelogDir">Directory, files from which should be checked.</param>
     /// <param name="extraCategories">Extra changelog files that have to be checked.</param>
-    DateTimeOffset GetLastMergedTimeFromChangelogs(string changelogDir, IReadOnlyCollection<string>? extraCategories = null);
+    /// <returns>Date of last merged commit with changelog file, and sha of such commit.</returns>
+    string GetLastMergedSha(string changelogDir, IReadOnlyCollection<string>? extraCategories = null);
 
 }

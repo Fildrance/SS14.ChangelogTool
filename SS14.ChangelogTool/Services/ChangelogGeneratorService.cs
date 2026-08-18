@@ -16,11 +16,11 @@ public class ChangelogGeneratorService(
 
     /// <summary>
     /// Generates new changelog files by collecting records
-    /// based on <see cref="lastChangeProvider"/> date (and data given by github)
+    /// based on commit hash, provided by <see cref="lastChangeShaProvider"/> 
     /// and writes data using <see cref="changelogWriter"/>.
     /// </summary>
     public async Task<bool> TryGenerate(
-        Func<IReadOnlyCollection<string>, DateTimeOffset> lastChangeProvider,
+        Func<IReadOnlyCollection<string>, string> lastChangeShaProvider,
         Action<Dictionary<string, List<ChangelogEntry>>> changelogWriter
     )
     {
@@ -29,14 +29,14 @@ public class ChangelogGeneratorService(
             extraCategories.AddRange(_options.ExtraCategories.Split(','));
 
         // Get the last merged PR time
-        var lastMergedTime = lastChangeProvider(extraCategories);
+        var lastMergeSha = lastChangeShaProvider(extraCategories);
 
-        logger.LogInformation("Generating diff from {LastMergedTime}", lastMergedTime);
+        logger.LogInformation("Generating diff of commits since {LastMergedSha} til current state of local repository.", lastMergeSha);
 
         // Get the list of PRs that were merged since last time.
-        var diff = await githubService.GetDiff(lastMergedTime);
+        var diff = await githubService.GetDiff(lastMergeSha);
 
-        logger.LogInformation("Collected {PullRequestCount} pull requests", diff.Count);
+        logger.LogInformation("Collected {PullRequestCount} pull requests.", diff.Count);
 
         // Generate a new YMLfest out of this
         var changelogs = parserService.ExtractChangelogEntries(diff, extraCategories);

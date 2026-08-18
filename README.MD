@@ -6,14 +6,12 @@ See [Configuration & HOW TO USE](README.Usage.md) for configuraiton instructions
 
 ### Architecture notes
 - Commands are registered in DI as `UpdateCommand`, `DumpDiffCommand`, and `SendWebhookCommand`.
-- File operations are abstracted behind `IFileManager` and the code uses 
-- Options are bound to `ChangelogConfigOptions` and validated on startup via `ValidateOnStart()` and a custom validator.
-- Use `System.IO.Abstractions` where possible for better testability
+- Pull requests are collected from **local git history** (via LibGit2Sharp): `update` finds the newest commit that touched the changelog files, `dump-diff` uses the provided `--sha`, and all commits reachable from the current branch tip are walked. PR numbers are extracted from commit messages (`(#NNN)` suffix) and PR details are fetched from GitHub in batches through the GraphQL API.
 
 
 ### Testing
 - Local debug launch can be done using provided `launchSettings.json` - just fill required parts of configuration and run the project, profiles are named according to subcommands they invoke
-- Unit tests live in `SS14.ChangelogTool.Tests`. Use XUnit, NSubstitute, if needed - can check manipulations by using interfaces that are provided by System.IO.Abstractions. Run tests with:
+- Unit tests live in `SS14.ChangelogTool.Tests`. Use XUnit, NSubstitute. Run tests with:
 
 ```powershell
 dotnet test
@@ -52,14 +50,17 @@ To update to the latest version:
 dotnet tool update --global SpaceWizards.ChangelogTool
 ```
 
-Using tool: 
+Using tool:
+
+> The tool must be run inside a local clone/worktree of the SS14 repository with the branch you want to generate a
+> changelog for checked out. Changelog entries are generated from commits reachable from the current branch tip.
 
 ```powershell
 ss14-changelog update -d Resources\Changelog
 # commit updated YMLs, build, run publish tests
 ```
 
-- Creating a diff for a stable publish:
+- Creating a diff for a stable publish (`<last-publish-ref>` must exist in the local clone):
 
 ```powershell
 ss14-changelog dump-diff -s <last-publish-ref> -c diff.md

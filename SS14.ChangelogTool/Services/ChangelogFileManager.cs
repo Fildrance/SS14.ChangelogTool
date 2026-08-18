@@ -1,14 +1,14 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SS14.ChangelogTool.LocalGit;
 using SS14.ChangelogTool.Models;
-using System.IO.Abstractions;
 using SS14.ChangelogTool.Options;
 using YamlDotNet.Serialization;
 
 namespace SS14.ChangelogTool.Services;
 
 /// <inheritdoc/>
-public class ChangelogFileManager(ILogger<ChangelogFileManager> logger, IFileSystem fileSystem, IOptions<ChangelogToolOptions> options)
+public class ChangelogFileManager(ILocalGitRepository repository, IOptions<ChangelogToolOptions> options, ILogger<ChangelogFileManager> logger)
     : IChangelogFileManager
 {
     private readonly int _maxChangelogEntries = options.Value.MaxChangelogEntries;
@@ -25,45 +25,39 @@ public class ChangelogFileManager(ILogger<ChangelogFileManager> logger, IFileSys
     };
 
     /// <inheritdoc/>
-    public DateTimeOffset GetLastMergedTimeFromChangelogs(string changelogDir, IReadOnlyCollection<string>? extraCategories = null)
+    public string GetLastMergedSha(string changelogDir, IReadOnlyCollection<string>? extraCategories = null)
     {
         var allCategories = new HashSet<string> { "Changelog" };
         if (extraCategories is not null)
             allCategories.UnionWith(extraCategories);
 
         var lastMergedTime = DateTimeOffset.MinValue;
+        var lastMergeSha = string.Empty;
 
         foreach (var category in allCategories)
         {
             var fileName = Path.Combine(changelogDir, $"{category}.yml");
 
-            using var stream = fileSystem.File.OpenRead(fileName);
-            using var reader = new StreamReader(stream);
-            var deSerializer = new DeserializerBuilder()
-                .Build();
-            var container = deSerializer.Deserialize<ChangelogContainer>(reader);
-
-            var lastMergeForCategory = DateTimeOffset.MinValue;
-
-            foreach (var entry in container.Entries)
+            var lastCommitData = repository.GetLastCommitData(fileName);
+            if (lastCommitData != null)
             {
-                if(entry.Time == null)
-                    continue;
-
-                var prMergeTime = DateTimeOffset.Parse(entry.Time.Replace("\'", string.Empty));
-                if (prMergeTime <= lastMergeForCategory)
-                    continue;
-
-                lastMergeForCategory = prMergeTime;
+                DateTimeOffset lastChangeDate = lastCommitData.When;
+                if (lastMergedTime < lastChangeDate)
+                {
+                    lastMergedTime = lastChangeDate;
+                    lastMergeSha = lastCommitData.Sha;
+                }
             }
-
-            if (lastMergedTime < lastMergeForCategory)
-                lastMergedTime = lastMergeForCategory;
         }
 
         logger.LogInformation("Last PR time: {LastMergedTime}", lastMergedTime);
 
-        return lastMergedTime;
+        if (string.IsNullOrWhiteSpace(lastMergeSha))
+            throw new InvalidOperationException(
+                "Attempted to get data about last merged changelog commit but found nothing!"
+            );
+
+        return lastMergeSha;
     }
 
     /// <inheritdoc/>
@@ -73,7 +67,7 @@ public class ChangelogFileManager(ILogger<ChangelogFileManager> logger, IFileSys
         string? exceptCategory
     )
     {
-        using var stream = fileSystem.File.OpenWrite(saveTo);
+        using var stream = File.OpenWrite(saveTo);
         using var writer = new StreamWriter(stream);
 
         foreach (var (category, changelogEntries) in changelogParts)
@@ -104,7 +98,7 @@ public class ChangelogFileManager(ILogger<ChangelogFileManager> logger, IFileSys
                 ? "Changelog"
                 : category;
 
-            var changelogYmlPath = fileSystem.Path.Combine(changelogDir, $"{categoryFile}.yml");
+            var changelogYmlPath = Path.Combine(changelogDir, $"{categoryFile}.yml");
 
             logger.LogInformation("Writing changelog part {ChangelogYmlPath}", changelogYmlPath);
 
@@ -112,7 +106,7 @@ public class ChangelogFileManager(ILogger<ChangelogFileManager> logger, IFileSys
                 .Build();
 
             ChangelogContainer result;
-            using (var streamToRead = fileSystem.File.OpenRead(changelogYmlPath))
+            using (var streamToRead = File.OpenRead(changelogYmlPath))
             {
                 var content = new StreamReader(streamToRead);
                 result = deserializer.Deserialize<ChangelogContainer>(content);
@@ -138,7 +132,7 @@ public class ChangelogFileManager(ILogger<ChangelogFileManager> logger, IFileSys
             result.Entries = [.. entries.OrderBy(x => x.Id)];
 
             // Save to a string first to avoid holding multiple open handles
-            using var streamToWrite = fileSystem.File.Open(changelogYmlPath, FileMode.Truncate, FileAccess.Write);
+            using var streamToWrite = File.Open(changelogYmlPath, FileMode.Truncate, FileAccess.Write);
             using var writer = new StreamWriter(streamToWrite);
             var serializer = new SerializerBuilder()
                 .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)

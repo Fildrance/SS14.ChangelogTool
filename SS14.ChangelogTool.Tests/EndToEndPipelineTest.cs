@@ -5,11 +5,13 @@ using SS14.ChangelogTool.Models.GitHub;
 using SS14.ChangelogTool.Options;
 using SS14.ChangelogTool.Services;
 using System.CommandLine;
-using System.IO.Abstractions;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SS14.ChangelogTool.LocalGit;
+using SS14.ChangelogTool.Tests.TestInfrastructure;
 using Xunit.Abstractions;
+using SS14.ChangelogTool.LocalGit.Models;
 
 namespace SS14.ChangelogTool.Tests;
 
@@ -17,10 +19,15 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 {
     private readonly HashSet<string> _tempPaths = [];
 
+    private readonly InvocationConfiguration _invocationConfiguration = new()
+    {
+        EnableDefaultExceptionHandler = false
+    };
+
     #region UpdateCommand
 
     [Fact]
-    public void UpdateCommandWritesNewEntryToChangelog()
+    public void UpdateCommand_HaveNewEntries_WritesNewEntryToChangelog()
     {
         // Arrange: use the full DI setup from Registry, then override test-specific parts
         var services = new ServiceCollection();
@@ -28,26 +35,29 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
         OverrideOptions(services);
 
+        const string lastChangeSha = "last-change-sha";
+        SetupLocalRepository(services, lastChangeSha, [new(lastChangeSha, "fgdfgs (#5234)")]);
+
         // Stub out the GitHub service so it doesn't try to make real HTTP calls
         services.RemoveAll<IGitHubPullRequestService>();
         var ghService = Substitute.For<IGitHubPullRequestService>();
-        ghService.GetDiff(Arg.Any<DateTimeOffset>())
-            .Returns([
-                new GitHubPullRequest(
-                    Merged: true,
-                    """
-                    Adds the cool feature!
+        ghService.GetDiff(lastChangeSha)
+                 .Returns([
+                     new GitHubPullRequest(
+                         Merged: true,
+                         """
+                         Adds the cool feature!
 
-                    :cl:
-                    - add: Integration test feature
-                    """,
-                    new GitHubUser("TestUser"),
-                    new DateTimeOffset(new DateTime(2022,12,5,12,3,5), TimeSpan.Zero),
-                    new GitHubPullRequestBase("master"),
-                    Number: 42,
-                    "https://example.com/pr/42"
-                )
-            ]);
+                         :cl:
+                         - add: Integration test feature
+                         """,
+                         new GitHubUser("TestUser"),
+                         new DateTimeOffset(new DateTime(2022,12,5,12,3,5), TimeSpan.Zero),
+                         new GitHubPullRequestBase("master"),
+                         Number: 42,
+                         "https://example.com/pr/42"
+                     )
+                 ]);
         services.AddSingleton(ghService);
 
         // Use temp directory with resource files for this integration-style test
@@ -58,9 +68,12 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
         // Act: invoke UpdateCommand just like the real program does
         var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\"");
-        parseResult.Invoke();
+        var invokeResult = parseResult.Invoke(_invocationConfiguration);
 
-        // Assert: the Changelog.yml now contains our integration test change
+        // Assert
+        Assert.Equal(0, invokeResult);
+
+        // the Changelog.yml now contains our integration test change
         var changelogPath = Path.Combine(virtualDir, "Changelog.yml");
         var updatedContent = File.ReadAllText(changelogPath);
 
@@ -92,7 +105,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
     }
 
     [Fact]
-    public void UpdateCommandPrunesOldEntries()
+    public void UpdateCommand_HaveMoreThenLimitOfChangeLogEntries_PrunesOldEntries()
     {
         // Arrange: configure a very small max entries limit so rolling kicks in
         var services = new ServiceCollection();
@@ -100,19 +113,23 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
         OverrideOptions(services, maxLogEntries: 5);
 
+        const string lastChangeSha = "last-change-sha";
+        SetupLocalRepository(services, lastChangeSha, [new("some-sha", "fgdfgs (#5234)")]);
+
         services.RemoveAll<IGitHubPullRequestService>();
         var ghService = Substitute.For<IGitHubPullRequestService>();
-        ghService.GetDiff(Arg.Any<DateTimeOffset>())
-            .Returns([
-                new GitHubPullRequest(true,
-                    ":cl: \n- add: Fresh new entry",
-                    new GitHubUser("NewUser"),
-                    new DateTimeOffset(new DateTime(2022,12,5,12,3,5), TimeSpan.Zero),
-                    new GitHubPullRequestBase("master"),
-                    999,
-                    "https://example.com/pr/999")
-            ]);
+        ghService.GetDiff(lastChangeSha)
+                 .Returns([
+                     new GitHubPullRequest(true,
+                         ":cl: \n- add: Fresh new entry",
+                         new GitHubUser("NewUser"),
+                         new DateTimeOffset(new DateTime(2022,12,5,12,3,5), TimeSpan.Zero),
+                         new GitHubPullRequestBase("master"),
+                         999,
+                         "https://example.com/pr/999")
+                 ]);
         services.AddSingleton(ghService);
+
 
         // Create a changelog with 5 old entries (at the rolling boundary)
         var tempPath = Path.Combine(Path.GetTempPath(), "ss14_changelog_rolling_" + Guid.NewGuid().ToString("N"));
@@ -164,9 +181,12 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
         // Act
         var parseResult = command.Parse($"update --changelog-dir \"{tempPath}\"");
-        parseResult.Invoke();
+        var invokeResult = parseResult.Invoke(_invocationConfiguration);
 
-        // Assert: oldest entry was pruned, newest was added, max is 5
+        // Assert
+        Assert.Equal(0, invokeResult);
+
+        // oldest entry was pruned, newest was added, max is 5
         var changelogPath = Path.Combine(tempPath, "Changelog.yml");
         var updatedContent = File.ReadAllText(changelogPath);
 
@@ -179,39 +199,42 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         Assert.Equal(5, entryCount);
     }
 
-
     [Fact]
-    public void UpdateWithMultipleCategoriesWritesToSeparateFiles()
+    public void UpdateCommand_WithMultipleCategories_WritesToSeparateFiles()
     {
         // Arrange
         var services = new ServiceCollection();
         services.RegisterDependencies();
         OverrideOptions(services, extraCategories: "Admin,Maps");
 
+        const string lastChangeSha = "last-change-sha";
+        SetupLocalRepository(services, lastChangeSha, [new("some-sha", "fgdfgs (#5234)")]);
+
         services.RemoveAll<IGitHubPullRequestService>();
         var ghService = Substitute.For<IGitHubPullRequestService>();
-        ghService.GetDiff(Arg.Any<DateTimeOffset>())
-            .Returns([
-                new GitHubPullRequest(
-                    Merged: true,
-                    """
-                    Multi-category PR!
+        ghService.GetDiff(lastChangeSha)
+                 .Returns([
+                     new GitHubPullRequest(
+                         Merged: true,
+                         """
+                         Multi-category PR!
 
-                    :cl:
-                    - add: Added to main category
-                    admin:
-                    - fix: Fixed admin stuff
-                    maps:
-                    - tweak: Tweaked map
-                    """,
-                    new GitHubUser("CategoryUser"),
-                    new DateTimeOffset(new DateTime(2024,1,15,8,0,0), TimeSpan.Zero),
-                    new GitHubPullRequestBase("master"),
-                    Number: 200,
-                    "https://example.com/pr/200"
-                )
-            ]);
+                         :cl:
+                         - add: Added to main category
+                         admin:
+                         - fix: Fixed admin stuff
+                         maps:
+                         - tweak: Tweaked map
+                         """,
+                         new GitHubUser("CategoryUser"),
+                         new DateTimeOffset(new DateTime(2024,1,15,8,0,0), TimeSpan.Zero),
+                         new GitHubPullRequestBase("master"),
+                         Number: 200,
+                         "https://example.com/pr/200"
+                     )
+                 ]);
         services.AddSingleton(ghService);
+
 
         var virtualDir = CopyExistingChangelogs();
         var sp = services.BuildServiceProvider();
@@ -219,9 +242,12 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
         // Act
         var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\"");
-        parseResult.Invoke();
+        var invokeResult = parseResult.Invoke(_invocationConfiguration);
 
-        // Assert: Main changelog contains entry
+        // Assert
+        Assert.Equal(0, invokeResult);
+
+        // Main changelog contains entry
         var changelogContent = File.ReadAllText(Path.Combine(virtualDir, "Changelog.yml"));
         outputHelper.WriteLine(changelogContent);
         Assert.Contains(
@@ -273,7 +299,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
     }
 
     [Fact]
-    public void UpdateWithNoChangelogEntryDoesNothing()
+    public void UpdateCommand_WithPullRequestHaveNoChanges_DoesNothing()
     {
         // Arrange
         var services = new ServiceCollection();
@@ -281,24 +307,28 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
         OverrideOptions(services);
 
+        const string lastChangeSha = "last-change-sha";
+        SetupLocalRepository(services, lastChangeSha, [new("some-sha", "fgdfgs (#5234)")]);
+
         services.RemoveAll<IGitHubPullRequestService>();
         var ghService = Substitute.For<IGitHubPullRequestService>();
-        ghService.GetDiff(Arg.Any<DateTimeOffset>())
-            .Returns([
-                new GitHubPullRequest(
-                    Merged: true,
-                    """
-                    This PR has no changelog header at all.
-                    Just some regular description.
-                    """,
-                    new GitHubUser("NoClUser"),
-                    new DateTimeOffset(new DateTime(2023,3,10,14,0,0), TimeSpan.Zero),
-                    new GitHubPullRequestBase("master"),
-                    Number: 101,
-                    "https://example.com/pr/101"
-                )
-            ]);
+        ghService.GetDiff(lastChangeSha)
+                 .Returns([
+                     new GitHubPullRequest(
+                         Merged: true,
+                         """
+                         This PR has no changelog header at all.
+                         Just some regular description.
+                         """,
+                         new GitHubUser("NoClUser"),
+                         new DateTimeOffset(new DateTime(2023,3,10,14,0,0), TimeSpan.Zero),
+                         new GitHubPullRequestBase("master"),
+                         Number: 101,
+                         "https://example.com/pr/101"
+                     )
+                 ]);
         services.AddSingleton(ghService);
+
 
         var virtualDir = CopyExistingChangelogs();
         var sp = services.BuildServiceProvider();
@@ -310,9 +340,12 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
         // Act
         var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\"");
-        parseResult.Invoke();
+        var invokeResult = parseResult.Invoke(_invocationConfiguration);
 
-        // Assert: file should be unchanged
+        // Assert
+        Assert.Equal(0, invokeResult);
+
+        // file should be unchanged
         var updatedContent = File.ReadAllText(changelogPath);
         Assert.Equal(originalContent, updatedContent);
     }
@@ -326,29 +359,33 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
         OverrideOptions(services);
 
+        const string lastChangeSha = "last-change-sha";
+        SetupLocalRepository(services, lastChangeSha, [new("some-sha", "fgdfgs (#5234)")]);
+
         services.RemoveAll<IGitHubPullRequestService>();
         var ghService = Substitute.For<IGitHubPullRequestService>();
-        ghService.GetDiff(Arg.Any<DateTimeOffset>())
-            .Returns([
-                new GitHubPullRequest(
-                    Merged: true,
-                    """
-                    Big update with many changes!
+        ghService.GetDiff(lastChangeSha)
+                 .Returns([
+                     new GitHubPullRequest(
+                         Merged: true,
+                         """
+                         Big update with many changes!
 
-                    :cl:
-                    - add: Added something new
-                    - fix: Fixed a bug
-                    - tweak: Tweaked some values
-                    - remove: Removed old thing
-                    """,
-                    new GitHubUser("MultiChangeUser"),
-                    new DateTimeOffset(new DateTime(2023,8,20,9,30,0), TimeSpan.Zero),
-                    new GitHubPullRequestBase("master"),
-                    Number: 150,
-                    "https://example.com/pr/150"
-                )
-            ]);
+                         :cl:
+                         - add: Added something new
+                         - fix: Fixed a bug
+                         - tweak: Tweaked some values
+                         - remove: Removed old thing
+                         """,
+                         new GitHubUser("MultiChangeUser"),
+                         new DateTimeOffset(new DateTime(2023,8,20,9,30,0), TimeSpan.Zero),
+                         new GitHubPullRequestBase("master"),
+                         Number: 150,
+                         "https://example.com/pr/150"
+                     )
+                 ]);
         services.AddSingleton(ghService);
+
 
         var virtualDir = CopyExistingChangelogs();
         var sp = services.BuildServiceProvider();
@@ -356,9 +393,11 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
         // Act
         var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\"");
-        parseResult.Invoke();
+        var invokeResult = parseResult.Invoke(_invocationConfiguration);
 
         // Assert
+        Assert.Equal(0, invokeResult);
+
         var changelogPath = Path.Combine(virtualDir, "Changelog.yml");
         var updatedContent = File.ReadAllText(changelogPath);
 
@@ -374,7 +413,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
     #region DumpDiff
 
     [Fact]
-    public void DumpDiffCommandDumpsMarkdown()
+    public void DumpDiffCommand_HaveChanges_DumpsMarkdown()
     {
         // Arrange: use the full DI setup from Registry, then override test-specific parts
         var services = new ServiceCollection();
@@ -385,7 +424,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         // Stub out the GitHub service
         services.RemoveAll<IGitHubPullRequestService>();
         var ghService = Substitute.For<IGitHubPullRequestService>();
-        ghService.GetDiff(Arg.Any<DateTimeOffset>())
+        ghService.GetDiff(Arg.Any<string>())
             .Returns([
                 new GitHubPullRequest(
                     Merged: true,
@@ -404,9 +443,6 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
             ]);
 
         // Stub GetLastMergedFromRef to return a date that will trigger the diff
-        ghService.GetNewestChangelogEntryMergeDateByRef(Arg.Any<string>(), Arg.Any<IReadOnlyCollection<string>>())
-            .Returns(new DateTimeOffset(2023, 1, 1, 0, 0, 0, TimeSpan.Zero));
-
         services.AddSingleton(ghService);
 
         var virtualDir = CopyExistingChangelogs();
@@ -416,7 +452,10 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         // Act: invoke dump-diff command
         var mdPath = Path.Combine(virtualDir, "diff.md");
         var parseResult = command.Parse($"dump-diff --sha deadbeef --changelog-md-path \"{mdPath}\"");
-        parseResult.Invoke();
+        var invokeResult = parseResult.Invoke(_invocationConfiguration);
+
+        // Assert
+        Assert.Equal(0, invokeResult);
 
         // Assert: the markdown file was created and contains the entry
         Assert.True(File.Exists(mdPath));
@@ -427,7 +466,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
 
     [Fact]
-    public void DumpDiffCommandWithExceptCategoryExcludesIt()
+    public void DumpDiffCommand_WithExceptCategory_ExcludesIt()
     {
         // Arrange
         var services = new ServiceCollection();
@@ -437,7 +476,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
         services.RemoveAll<IGitHubPullRequestService>();
         var ghService = Substitute.For<IGitHubPullRequestService>();
-        ghService.GetDiff(Arg.Any<DateTimeOffset>())
+        ghService.GetDiff(Arg.Any<string>())
             .Returns([
                 new GitHubPullRequest(
                     Merged: true,
@@ -457,9 +496,6 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
                 )
             ]);
 
-        ghService.GetNewestChangelogEntryMergeDateByRef(Arg.Any<string>(), Arg.Any<IReadOnlyCollection<string>>())
-            .Returns(new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero));
-
         services.AddSingleton(ghService);
 
         var virtualDir = CopyExistingChangelogs();
@@ -469,7 +505,10 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         // Act: dump with except-category=Admin
         var mdPath = Path.Combine(virtualDir, "diff.md");
         var parseResult = command.Parse($"dump-diff --sha deadbeef --changelog-md-path \"{mdPath}\" --except-category Admin");
-        parseResult.Invoke();
+        var invokeResult = parseResult.Invoke(_invocationConfiguration);
+
+        // Assert
+        Assert.Equal(0, invokeResult);
 
         // Assert
         Assert.True(File.Exists(mdPath));
@@ -483,7 +522,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
     #region SendWebhook
 
     [Fact]
-    public async Task SendWebhookCommandSendsChangelogToDiscord()
+    public async Task SendWebhookCommand_Success_SendsChangelogToDiscord()
     {
         // Arrange
         var services = new ServiceCollection();
@@ -499,7 +538,6 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         services.AddSingleton(
             sp => new DiscordWebhookService(
                 httpClient, 
-                sp.GetRequiredService<IFileSystem>(), 
                 sp.GetRequiredService<IOptions<ChangelogToolOptions>>(), 
                 sp.GetRequiredService<ILogger<DiscordWebhookService>>()
             )
@@ -532,7 +570,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
     }
 
     [Fact]
-    public async Task SendWebhookCommandReturnsErrorOnBadRequest()
+    public async Task SendWebhookCommand_DiscordBadRequests_ReturnsError()
     {
         // Arrange
         var services = new ServiceCollection();
@@ -548,7 +586,6 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         services.AddSingleton(
             sp => new DiscordWebhookService(
                 httpClient,
-                sp.GetRequiredService<IFileSystem>(),
                 sp.GetRequiredService<IOptions<ChangelogToolOptions>>(),
                 sp.GetRequiredService<ILogger<DiscordWebhookService>>()
             )
@@ -588,22 +625,40 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         return tempPath;
     }
 
-    private static void OverrideOptions(ServiceCollection services, int? maxLogEntries = null, string? extraCategories = null)
+    private void OverrideOptions(ServiceCollection services, int? maxLogEntries = null, string? extraCategories = null)
     {
+        // Route all logging from the commands and their services to the xUnit test output instead of the console.
+        services.RemoveAll<ILoggerProvider>();
+        services.AddSingleton<ILoggerProvider>(new TestOutputLoggerProvider(outputHelper));
+
         services.RemoveAll<IConfigureOptions<ChangelogToolOptions>>();
         var config = new ChangelogToolOptions
         {
             Repo = "space-wizards/SS14.ChangelogTool",
-            Branch = "master",
             GithubToken = "fake-token",
             ChangelogRepoPath = ".",
-            MaxPages = 1,
+            MaxPullRequestEntriesInGraphQLRequest = 1,
             MaxChangelogEntries = maxLogEntries ?? 500,
             ExtraCategories = extraCategories,
             DiscordWebHook = "https://discord.com/api/webhooks/test",
             DiscordWebhookCharacterLimit = 2000,
         };
         services.AddSingleton(Microsoft.Extensions.Options.Options.Create(config));
+    }
+
+    private static void SetupLocalRepository(ServiceCollection services, string lastChangeSha, IEnumerable<CommitBriefInfo> commits)
+    {
+        services.RemoveAll<ILocalGitRepository>();
+
+        var repo = Substitute.For<ILocalGitRepository>();
+
+        repo.GetLastCommitData(Arg.Any<string>())
+            .Returns(new LastCommitData(lastChangeSha, new DateTimeOffset(2024, 4, 5, 0, 0, 0, TimeSpan.Zero)));
+
+        repo.GetCommitsSince(lastChangeSha)
+            .Returns(commits);
+
+        services.AddSingleton(repo);
     }
 
     public void Dispose()
@@ -614,24 +669,4 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
                 Directory.Delete(tempPath, true);
         }
     }
-
-    private class MockHttpMessageHandler(HttpResponseMessage responseMessage) : HttpMessageHandler
-    {
-        public int Called { private set; get; }
-
-        public List<string> Requests { get; } = new();
-
-        public List<string> Urls { get; } = new();
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            var content = await request.Content?.ReadAsStringAsync(cancellationToken)!;
-            Requests.Add(content);
-            Urls.Add(request.RequestUri?.ToString()!);
-            Called++;
-            return responseMessage;
-        }
-    }
 }
-

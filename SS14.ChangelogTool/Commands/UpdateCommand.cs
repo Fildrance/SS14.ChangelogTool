@@ -10,7 +10,7 @@ public sealed class UpdateCommand : Command
     {
         var changelogDirOption = new Option<string>("--changelog-dir", "-d")
         {
-            Description = "Path to the changelog directory",
+            Description = "Path to the changelog directory inside repository folder",
             Required = true,
         };
 
@@ -20,7 +20,7 @@ public sealed class UpdateCommand : Command
         {
             var changeLogDir = parseResult.GetValue(changelogDirOption)!;
             return await changelogGenerator.TryGenerate(
-                extraCategories => changelogFileManager.GetLastMergedTimeFromChangelogs(changeLogDir, extraCategories),
+                extraCategories => changelogFileManager.GetLastMergedSha(changeLogDir, extraCategories),
                 changelogs => changelogFileManager.UpdateChangelogs(changelogs, changeLogDir)
             ) ? 0 : 1;
         });

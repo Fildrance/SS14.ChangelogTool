@@ -10,7 +10,7 @@ REPO=space-wizards/space-station-14
 CHANGELOG_REPO_PATH=Resources/Changelog
 # comma-separated list of additional changelog categories; creates/updates separate YAML files like Admin.yml, Maps.yml, etc.
 EXTRA_CATEGORIES=Admin,Maps,Rules
-# *MANDATORY* GitHub personal access token or Actions workflow token with read access to pull requests
+# *MANDATORY* GitHub personal access token or Actions workflow token with read access to pull requests and content
 GITHUB_TOKEN=<github personal access token or workflow token>
 # Discord webhook URL for the send-webhook command; if omitted, repsective command will throw
 DISCORD_WEBHOOK=<discord webhook url>
@@ -34,7 +34,7 @@ Recommended minimal local setup configuration
  $env:CHANGELOG_REPO_PATH="Resources/Changelog"
  $env:BRANCH="master"
  $env:EXTRA_CATEGORIES="Admin,Maps,Rules"
- $env:GITHUB_TOKEN="<your gh api key with READ permission for PRs>"
+ $env:GITHUB_TOKEN="<your gh api key with READ permission for content and PRs>"
 ```
 
 ### Core commands

@@ -8,7 +8,24 @@ namespace SS14.ChangelogTool.LocalGit;
 /// </summary>
 public class LocalGitRepository : ILocalGitRepository
 {
+    private readonly string? _repositoryDiscoveryPath;
     private IRepository? _gitRepository;
+
+    /// <summary>
+    /// Discovers the repository from the current working directory.
+    /// </summary>
+    public LocalGitRepository()
+    {
+    }
+
+    /// <summary>
+    /// Discovers the repository starting from the provided path instead of the current working directory.
+    /// </summary>
+    /// <param name="repositoryDiscoveryPath">Path from which <c>Repository.Discover</c> should start searching.</param>
+    public LocalGitRepository(string repositoryDiscoveryPath)
+    {
+        _repositoryDiscoveryPath = repositoryDiscoveryPath;
+    }
 
     private IRepository InternalRepository
     {
@@ -102,8 +119,8 @@ public class LocalGitRepository : ILocalGitRepository
 
     private IRepository GetLocalRepository()
     {
-        // Searches upward from the current directory
-        string repoPath = Repository.Discover(".");
+        // Searches upward from the current directory (or from the explicitly provided path)
+        string repoPath = Repository.Discover(_repositoryDiscoveryPath ?? ".");
 
         if (repoPath == null) 
             throw new InvalidOperationException("Failed to find initialized local git repository.");

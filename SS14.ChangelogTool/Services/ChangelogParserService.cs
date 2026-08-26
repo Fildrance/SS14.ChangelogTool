@@ -58,7 +58,7 @@ public partial class ChangelogParserService(ILogger<ChangelogParserService> logg
 
         // GitHub returns "author: null" for pull requests whose author account was deleted,
         // which deserializes User to null; fall back to a placeholder in that case.
-        var author = match.Groups[1].Success ? match.Groups[1].Value.Trim() : pr.User?.Login ?? "Unknown";
+        var author = match.Groups[1].Success ? match.Groups[1].Value.Trim() : pr.Author?.Login ?? "Unknown";
         var changelogBody = body.Substring(match.Index + match.Length);
 
         var currentCategory = Constants.MainCategory;

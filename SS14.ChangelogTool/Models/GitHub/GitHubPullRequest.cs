@@ -3,7 +3,7 @@
 public sealed record GitHubPullRequest(
     bool Merged,
     string? Body,
-    GitHubUser? User,
+    GitHubUser? Author,
     DateTimeOffset? MergedAt,
     GitHubPullRequestBase? Base,
     int Number,

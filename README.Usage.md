@@ -51,6 +51,12 @@ Recommended minimal local setup configuration
   ss14-changelog -- update -d C:\path\to\repo\Resources\Changelog
   ```
 
+  You also can use it with starting sha specified, then tool will not try to search for last changes in changelog files and simply will get all changes since specified sha value (if it can).
+  Example:
+  ```powershell
+  ss14-changelog -- update -d C:\path\to\repo\Resources\Changelog -s da04a52e80246454ae577bfc9b56989064a96b60
+  ```
+
 - Dump diff
 
   Walks the local git history from the current branch tip back to the provided `--sha` commit, then extracts PR numbers from commit messages and fetches the PR details from GitHub through the GraphQL API. Writes a human-readable markdown diff of the parsed changelog entries, optionally excluding a category (`--except-category`).

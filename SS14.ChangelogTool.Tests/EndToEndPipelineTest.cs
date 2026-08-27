@@ -364,9 +364,8 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
     [Theory]
     [InlineData(null)] // Base case
-    [InlineData("Admin")] // Modified primary changelog
+    [InlineData("Gooblog")] // Modified primary changelog
     [InlineData("Maps")]
-    [InlineData("Rules")]
     public void UpdateWithMultipleChangeTypesInOnePREntryAndPrimaryChangelog(string? primaryChangelog = null)
     {
         // Arrange

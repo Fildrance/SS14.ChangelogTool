@@ -122,15 +122,30 @@ public class ChangelogFileManager(ILocalGitRepository repository, IOptions<Chang
             logger.LogInformation("Writing changelog part {ChangelogYmlPath}", changelogYmlPath);
 
             ChangelogContainer result;
-            using (var streamToRead = File.OpenRead(changelogYmlPath))
+            using (var streamToRead = File.Open(changelogYmlPath, FileMode.OpenOrCreate))
             {
-                var content = new StreamReader(streamToRead);
-                result = deserializer.Deserialize<ChangelogContainer>(content);
+                // if file is empty, then it probably was just created.
+                // so we put same name as file and order is something greater,
+                // then what we have for usual files.
+                if (streamToRead.Length == 0)
+                {
+                    result = new ChangelogContainer
+                    {
+                        Name = categoryFile,
+                        Order = 100
+                    };
+                }
+                else
+                {
+                    var content = new StreamReader(streamToRead);
+                    result = deserializer.Deserialize<ChangelogContainer>(content);
+                }
             }
 
             var entries = result.Entries;
-
-            var lastEntryId = entries.Max(x => x.Id);
+            var lastEntryId = entries.Count == 0 
+                ? 1 
+                : entries.Max(x => x.Id);
 
             if (changelogParts.TryGetValue(category, out var changelogEntries))
             {

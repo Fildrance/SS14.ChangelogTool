@@ -11,7 +11,7 @@ public sealed class ChangelogContainer
     /// List of changelog entries.
     /// </summary>
     [YamlMember(Alias = "Entries", Order = 1)]
-    public List<ChangelogEntry> Entries { get; set; }
+    public List<ChangelogEntry> Entries { get; set; } = new();
 
     /// <summary>
     /// Marker, if changelog should be presented only for admins.

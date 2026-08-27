@@ -23,6 +23,7 @@ public class ChangelogFileManager(ILocalGitRepository repository, IOptions<Chang
         { ChangeType.Fix, "🐛" },
         { ChangeType.Remove, "❌" },
         { ChangeType.Tweak, "⚒️" },
+        { ChangeType.Experimental, "🧪" },
     };
 
     /// <inheritdoc/>
@@ -81,7 +82,7 @@ public class ChangelogFileManager(ILocalGitRepository repository, IOptions<Chang
                 writer.WriteLine($"**{changelogEntry.Author}** updated:  ");
                 foreach (var change in changelogEntry.Changes)
                 {
-                    var emoji = Emojis[change.Type];
+                    var emoji = Emojis.GetValueOrDefault(change.Type, "❓");
                     writer.WriteLine($"{emoji} - {change.Message} ([#{changelogEntry.Number}]({changelogEntry.Url}))  ");
                 }
 

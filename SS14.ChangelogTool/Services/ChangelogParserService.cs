@@ -89,19 +89,19 @@ public partial class ChangelogParserService(ILogger<ChangelogParserService> logg
             if (!entryMatch.Success)
                 continue;
 
-            var type = entryMatch.Groups[1].Value.ToLowerInvariant() switch
+            ChangeType type = entryMatch.Groups[1].Value.ToLowerInvariant() switch
             {
                 "add" => ChangeType.Add,
                 "remove" => ChangeType.Remove,
                 "fix" or "bugfix" or "bug" => ChangeType.Fix,
                 "tweak" => ChangeType.Tweak,
-                _ => (ChangeType?)null,
+                "experimental" => ChangeType.Experimental,
+                _ => ChangeType.Unknown,
             };
 
             var message = entryMatch.Groups[2].Value.Trim();
 
-            if (type is { } t)
-                entries.Add((currentCategory, new ChangeDescription(t, message)));
+            entries.Add((currentCategory, new ChangeDescription(type, message)));
         }
 
         return entries
@@ -111,7 +111,7 @@ public partial class ChangelogParserService(ILogger<ChangelogParserService> logg
                 x => new ChangelogEntry
                 {
                     Number = pr.Number,
-                    Url = pr.Html_url,
+                    Url = pr.Url,
                     Author = author,
                     Changes = x.Select(c => c.ChangeDone)
                         .ToList(),

@@ -68,7 +68,7 @@ public class GithubGraphQLClient(IGraphQLClient graphQlClient, IOptions<Changelo
         return result;
     }
 
-    public async Task<List<(string Sha, string Owner, string Repo)>> GetOwnedBy(List<string> shaListToDiscover)
+    public async Task<IReadOnlyCollection<(string Sha, string RepoWithOwner)>> GetOwnedBy(IReadOnlyCollection<string> shaListToDiscover)
     {
         if (shaListToDiscover.Count == 0)
             return [];
@@ -77,7 +77,7 @@ public class GithubGraphQLClient(IGraphQLClient graphQlClient, IOptions<Changelo
         var chunks = shaListToDiscover.Distinct()
                                       .Chunk(chunkSize);
 
-        var result = new List<(string Sha, string Owner, string Repo)>();
+        var result = new List<(string Sha, string RepoWithOwner)>();
 
         foreach (var chunk in chunks) 
         {
@@ -110,8 +110,7 @@ public class GithubGraphQLClient(IGraphQLClient graphQlClient, IOptions<Changelo
             var index = 0;
             foreach (var pullRequestInfo in data)
             {
-                var parts = ExtractParts(pullRequestInfo.Repository.NameWithOwner);
-                result.Add((chunk[index], parts.owner, parts.repo));
+                result.Add((chunk[index], pullRequestInfo.Repository.NameWithOwner));
                 index++;
             }
         }

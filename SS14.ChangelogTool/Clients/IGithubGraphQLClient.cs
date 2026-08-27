@@ -20,6 +20,6 @@ public interface IGithubGraphQLClient
     /// Uses batching.
     /// </summary>
     /// <param name="shaListToDiscover">List of SHA that we need detect owner repo for.</param>
-    /// <returns>Pairs of SHA, Owner and RepoName.</returns>
-    Task<List<(string Sha, string Owner, string Repo)>> GetOwnedBy(List<string> shaListToDiscover);
+    /// <returns>Pairs of SHA, Owner and RepoName (in format of 'owner/repo').</returns>
+    Task<IReadOnlyCollection<(string Sha, string RepoWithOwner)>> GetOwnedBy(IReadOnlyCollection<string> shaListToDiscover);
 }

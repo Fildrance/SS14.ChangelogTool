@@ -9,7 +9,7 @@ namespace SS14.ChangelogTool.Options;
 public sealed class ChangelogToolOptions
 {
     /// <summary>
-    /// The repository to use
+    /// The repository to use, in format of 'owner/repo-name'.
     /// </summary>
     [Required]
     [ConfigurationKeyName("REPO")]
@@ -85,4 +85,18 @@ public sealed class ChangelogToolOptions
     /// </summary>
     [ConfigurationKeyName("MIN_WAIT_FOR_GIT_HUB_API_SECONDS")]
     public int MinWaitForGitHubApiSeconds { get; set; } = 2;
+
+    /// <summary>
+    /// If enabled - will check each squash commit and only add changelog
+    /// from commits that were added in current <see cref="Repo"/> repository, and discard others.
+    /// </summary>
+    /// <remarks>
+    /// This is important for forks, because forks will have all commits
+    /// from any repository they get merges with, but will usually be interested in only generating their own changelog.
+    /// This, however, can be problem for cases where fork is getting upstream merges, for example,
+    /// not from stable branch but on daily basis from master, for example - because upstream will not be generating
+    /// its own changelog but will still provide features, which will look like they are missing changelog entries.
+    /// </remarks>
+    [ConfigurationKeyName("IS_PROCESS_ONLY_FROM_CURRENT_REPO_ENABLED")]
+    public bool IsProcessOnlyFromCurrentRepoEnabled { get; set; } = true;
 }

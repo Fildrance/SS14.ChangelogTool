@@ -5,6 +5,7 @@ using SS14.ChangelogTool.Models.GitHub;
 using SS14.ChangelogTool.Options;
 using System.Text.RegularExpressions;
 using SS14.ChangelogTool.LocalGit;
+using SS14.ChangelogTool.LocalGit.Models;
 
 namespace SS14.ChangelogTool.Services;
 
@@ -41,12 +42,15 @@ public partial class GitHubPullRequestService(
     public async Task<GitHubDiff> GetDiff(string sinceSha)
     {
         var repo = _options.Repo;
-        
+
+        var commitsSinceSha = repository.GetCommitsSince(sinceSha);
+
+        var filtered = await FilterCommits(commitsSinceSha, repo);
+
         HashSet<int> pullRequestNumbers = new();
         HashSet<int> revertedPullRequestNumbers = new();
-        
-        var commitsSinceSha = repository.GetCommitsSince(sinceSha);
-        foreach (var commit in commitsSinceSha)
+
+        foreach (var commit in filtered)
         {
             var match = PullRequestNumberRegex().Match(commit.MessageShort);
             if (!match.Success)
@@ -104,5 +108,21 @@ public partial class GitHubPullRequestService(
                                    .ToList();
 
         return new GitHubDiff(pullRequests, revertedPullRequestNumbers);
+    }
+
+    private async Task<IEnumerable<CommitBriefInfo>> FilterCommits(IReadOnlyCollection<CommitBriefInfo> commitsSinceSha, string repo)
+    {
+        if (!_options.IsProcessOnlyFromCurrentRepoEnabled)
+            return commitsSinceSha;
+
+        var shaListToDiscover = commitsSinceSha.Select(x => x.Sha)
+                                               .ToArray();
+        var withOwners = await ghGraphQlClient.GetOwnedBy(shaListToDiscover);
+
+        var onlyFromCurrentRepo = withOwners.Where(x => x.RepoWithOwner == repo)
+                                            .Select(x => x.Sha)
+                                            .ToHashSet();
+
+        return commitsSinceSha.Where(x => onlyFromCurrentRepo.Contains(x.Sha));
     }
 }

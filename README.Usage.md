@@ -26,6 +26,8 @@ MAX_RETRIES_FOR_GIT_HUB_API=12
 MAX_WAIT_FOR_GIT_HUB_API_SECONDS=32
 # minimum wait time between attempts for gh api calls when api call fails; uses exponential backoff retries
 MIN_WAIT_FOR_GIT_HUB_API_SECONDS=2
+# If set to true - when doing update, will check each commit and only add changelog from commits that were added in current GitHub repository (set by REPO config value), and discard others.
+IS_PROCESS_ONLY_FROM_CURRENT_REPO_ENABLED = true
 ```
 
 Recommended minimal local setup configuration

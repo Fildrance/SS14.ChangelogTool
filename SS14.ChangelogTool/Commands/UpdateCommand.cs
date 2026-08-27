@@ -6,7 +6,7 @@ namespace SS14.ChangelogTool.Commands;
 public sealed class UpdateCommand : Command
 {
     public UpdateCommand(ChangelogGeneratorService changelogGenerator, IChangelogFileManager changelogFileManager)
-        : base("update", "Updates the changelog.yml files in resources")
+        : base("update", "Updates yml changelog files in resources")
     {
         var changelogDirOption = new Option<string>("--changelog-dir", "-d")
         {

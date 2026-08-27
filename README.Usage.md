@@ -8,6 +8,9 @@ Some of them are mandatory to start tool.
 REPO=space-wizards/space-station-14
 # *MANDATORY* path to changelog files inside repo
 CHANGELOG_REPO_PATH=Resources/Changelog
+# The main file that will be updated when generating changelogs that are not targeting some special extra categories.
+# Forks will typically want to change this value to match the name of their changelog file.
+PRIMARY_CHANGELOG=Changelog
 # comma-separated list of additional changelog categories; creates/updates separate YAML files like Admin.yml, Maps.yml, etc.
 EXTRA_CATEGORIES=Admin,Maps,Rules
 # *MANDATORY* GitHub personal access token or Actions workflow token with read access to pull requests

@@ -59,10 +59,10 @@ public class GitHubPullRequestServiceTests
         Assert.Equal(expectedReverted.OrderBy(x => x), diff.RevertedPullRequestNumbers.OrderBy(x => x));
         Assert.All(expectedReverted, n => Assert.DoesNotContain(n, diff.PullRequests.Select(pr => pr.Number)));
 
-        // The revert PR's own number should still be requested from the client
+        // We remove revert PR from changes too
         await _client.Received(1).GetPullRequests(
             Repo,
-            Arg.Is<IReadOnlyCollection<int>>(numbers => numbers != null && numbers.Contains(selfPullRequestNumber)));
+            Arg.Is<IReadOnlyCollection<int>>(numbers => numbers != null && numbers.Count == 0));
     }
 
     [Fact]

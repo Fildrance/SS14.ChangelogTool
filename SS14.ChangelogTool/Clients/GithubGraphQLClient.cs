@@ -62,6 +62,8 @@ public class GithubGraphQLClient(IGraphQLClient graphQlClient, IOptions<Changelo
 
             var response = await graphQlClient.SendQueryAsync<GitHubPullRequestsResponse>(request);
 
+            EnsureSuccessful(response);
+
             result.AddRange(response.Data.Repository.Values.Where(x => x is not null)!);
         }
 
@@ -86,7 +88,7 @@ public class GithubGraphQLClient(IGraphQLClient graphQlClient, IOptions<Changelo
             {
                 queryParts.Add(
                     $$"""
-                      commit_{{i}}: search(q: "{{chunk[i]}} is:pr is:merged", type: ISSUE, first: 1) {
+                      commit_{{i}}: search(query: "{{chunk[i]}} is:pr is:merged", type: ISSUE, first: 1) {
                           nodes {
                               ... on PullRequest {
                                   url
@@ -103,19 +105,37 @@ public class GithubGraphQLClient(IGraphQLClient graphQlClient, IOptions<Changelo
 
             var request = new GraphQLRequest(query);
 
-            var response = await graphQlClient.SendQueryAsync<GitHubBatchResponse>(request);
-            var data = response.Data.Commits.Values.SelectMany(x => x.Nodes);
-            // graphQL guarantees ordering of results
-            // https://github.com/graphql/graphql-spec/blob/main/spec/Section%207%20--%20Response.md#serialized-map-ordering
-            var index = 0;
-            foreach (var pullRequestInfo in data)
+            var response = await graphQlClient.SendQueryAsync<Dictionary<string, CommitSearchNode>>(request);
+
+            EnsureSuccessful(response);
+
+            // The response contains one field per search, aliased as commit_{i}. Look each chunk entry up by its own
+            // alias so SHAs stay correctly paired even when a search returns no matching pull requests.
+            for (var i = 0; i < chunk.Length; i++)
             {
-                result.Add((chunk[index], pullRequestInfo.Repository.NameWithOwner));
-                index++;
+                if (!response.Data.TryGetValue($"commit_{i}", out var searchResult))
+                    continue;
+
+                var pullRequest = searchResult.Nodes.FirstOrDefault();
+                if (pullRequest is null)
+                    continue;
+
+                result.Add((chunk[i], pullRequest.Repository.NameWithOwner));
             }
         }
 
         return result;
+    }
+
+    private static void EnsureSuccessful<T>(GraphQLResponse<T> response)
+    {
+        if (response.Errors is { Length: > 0 })
+        {
+            throw new InvalidOperationException(
+                "GitHub GraphQL search failed when discovering commit owners: "
+                + string.Join("; ", response.Errors.Select(e => e.Message))
+            );
+        }
     }
 
     private static (string repo, string owner) ExtractParts(string repo)

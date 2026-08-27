@@ -2,11 +2,6 @@
 
 namespace SS14.ChangelogTool.Models.GitHub;
 
-public class GitHubBatchResponse
-{
-    public Dictionary<string, CommitSearchNode> Commits { get; set; } = new();
-}
-
 public class RepositoryInfo
 {
     [JsonPropertyName("nameWithOwner")]

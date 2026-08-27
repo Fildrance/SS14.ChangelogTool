@@ -13,6 +13,7 @@ using SS14.ChangelogTool.Options;
 using SS14.ChangelogTool.Services;
 using System.CommandLine;
 using System.Net;
+using SS14.ChangelogTool.LocalGit;
 
 namespace SS14.ChangelogTool;
 
@@ -41,16 +42,9 @@ public static class Registry
         });
         services.AddSingleton<IChangelogFileManager, ChangelogFileManager>();
         services.AddSingleton<IPullRequestParserService, ChangelogParserService>();
-        services.AddSingleton<IGitHubPullRequestService, GitHubPullRequestService>(sp =>
-        {
-            var clientFactory = sp.GetRequiredService<IHttpClientFactory>();
-            var client = clientFactory.CreateClient(nameof(GitHubPullRequestService));
-            return new GitHubPullRequestService(client, sp.GetRequiredService<IGithubPullRequestClient>(),
-                sp.GetRequiredService<IOptions<ChangelogToolOptions>>(),
-                sp.GetRequiredService<ILogger<GitHubPullRequestService>>());
-        });
+        services.AddSingleton<IGitHubPullRequestService, GitHubPullRequestService>();
+        services.AddSingleton<ILocalGitRepository, LocalGitRepository>();
         services.AddSingleton<IGithubPullRequestClient, GithubPullRequestClient>();
-        services.AddSingleton<System.IO.Abstractions.IFileSystem>(sp => new System.IO.Abstractions.FileSystem());
 
         #region clients of different flavours
 
@@ -71,9 +65,6 @@ public static class Registry
                 client.DefaultRequestHeaders.Add("Authorization", $"Bearer {options.GithubToken}");
             }
         ).AddGitHubRetryHandler();
-
-        services.AddHttpClient<GitHubPullRequestService>(client => client.Timeout = TimeSpan.FromSeconds(30))
-            .AddGitHubRetryHandler();
 
         services.AddSingleton<IGraphQLClient>(sp =>
         {

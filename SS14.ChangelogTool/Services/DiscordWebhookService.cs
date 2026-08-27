@@ -1,5 +1,4 @@
-﻿using System.IO.Abstractions;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Http.Headers;
@@ -12,7 +11,7 @@ namespace SS14.ChangelogTool.Services;
 /// <summary>
 /// Service for working with posting changelog onto discord by discord webhooks.
 /// </summary>
-public class DiscordWebhookService(HttpClient client, IFileSystem fileSystem, IOptions<ChangelogToolOptions> options, ILogger<DiscordWebhookService> logger)
+public class DiscordWebhookService(HttpClient client, IOptions<ChangelogToolOptions> options, ILogger<DiscordWebhookService> logger)
 {
     private readonly ChangelogToolOptions _options = options.Value;
 
@@ -25,7 +24,7 @@ public class DiscordWebhookService(HttpClient client, IFileSystem fileSystem, IO
         if (discordHook is null)
             throw new Exception("Discord webhook is not set in environment or could not be read from .env in working dir");
 
-        using var stream = fileSystem.File.OpenRead(changelogMarkdownPath);
+        using var stream = File.OpenRead(changelogMarkdownPath);
         using var contentStreamReader = new StreamReader(stream);
 
         var characterLimit = _options.DiscordWebhookCharacterLimit;

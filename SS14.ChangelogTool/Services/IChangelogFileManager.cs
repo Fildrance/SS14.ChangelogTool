@@ -20,14 +20,19 @@ public interface IChangelogFileManager
     /// Updates existing changelog files in provided directory.
     /// </summary>
     /// <param name="changelogParts">Changelog entries grouped by changelog category.</param>
+    /// <param name="revertedPullRequestNumbers">PR numbers whose changelog entries should be removed.</param>
     /// <param name="changelogDir">Directory, in which changelog files are.</param>
-    void UpdateChangelogs(Dictionary<string, List<ChangelogEntry>> changelogParts, string changelogDir);
+    void UpdateChangelogs(
+        Dictionary<string, List<ChangelogEntry>> changelogParts,
+        IReadOnlyCollection<int> revertedPullRequestNumbers,
+        string changelogDir);
 
     /// <summary>
     /// Get newest changelog entry by PR merge datetime from changelog files in directory.
     /// </summary>
     /// <param name="changelogDir">Directory, files from which should be checked.</param>
     /// <param name="extraCategories">Extra changelog files that have to be checked.</param>
-    DateTimeOffset GetLastMergedTimeFromChangelogs(string changelogDir, IReadOnlyCollection<string>? extraCategories = null);
+    /// <returns>Date of last merged commit with changelog file, and sha of such commit.</returns>
+    string GetLastMergedSha(string changelogDir, IReadOnlyCollection<string>? extraCategories = null);
 
 }

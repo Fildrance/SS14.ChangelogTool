@@ -6,14 +6,13 @@ namespace SS14.ChangelogTool.Commands;
 public sealed class DumpDiffCommand : Command
 {
     public DumpDiffCommand(
-		IGitHubPullRequestService gitHubService,
 		IChangelogFileManager changelogFileManager,
 		ChangelogGeneratorService changelogGeneratorService
 	) : base("dump-diff", "Dumps a diff to a markdown file, for later sending to discord or hosting on CDN")
 	{
         var sinceRefShaOption = new Option<string>("--sha", "-s")
 		{
-			Description = "Specific ref sha to compare changes to. Good chance this should be the github.event.pull_request.base.sha workflow env",
+			Description = "Specific ref sha to get list of changes since.",
 			Required = true,
 		};
 
@@ -39,8 +38,8 @@ public sealed class DumpDiffCommand : Command
                 var changelogMarkdownPath = parseResult.GetValue(changelogMarkdownPathOption)!;
                 var exceptCategory = parseResult.GetValue(exceptCategoryOption)!;
                 return await changelogGeneratorService.TryGenerate(
-                    extraCategories => gitHubService.GetNewestChangelogEntryMergeDateByRef(sha, extraCategories),
-                    changelogs => changelogFileManager.DumpChangelogToMarkdown(changelogMarkdownPath, changelogs, exceptCategory)
+                    _ => sha,
+                    (changelogs, _) => changelogFileManager.DumpChangelogToMarkdown(changelogMarkdownPath, changelogs, exceptCategory)
                 ) ? 0 : 1;
             }
         );

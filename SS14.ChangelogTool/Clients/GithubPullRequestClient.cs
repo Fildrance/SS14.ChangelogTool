@@ -2,7 +2,6 @@
 using GraphQL.Client.Abstractions;
 using Microsoft.Extensions.Options;
 using SS14.ChangelogTool.Models.GitHub;
-using SS14.ChangelogTool.Models.GraphQL;
 using SS14.ChangelogTool.Options;
 
 namespace SS14.ChangelogTool.Clients;
@@ -12,65 +11,74 @@ public class GithubPullRequestClient(IGraphQLClient graphQlClient, IOptions<Chan
 {
     public const string GithubGraphQLApiBase = "https://api.github.com/graphql";
 
-    private readonly ChangelogToolOptions _options = options.Value;
-    
     /// <inheritdoc/>
-    public async Task<IReadOnlyCollection<GitHubPullRequest>> GetPullRequestsOlderThen(string repo, string branch, DateTimeOffset olderThen)
+    public async Task<IReadOnlyCollection<GitHubPullRequest>> GetPullRequests(
+        string repo,
+        IReadOnlyCollection<int> pullRequestNumbers
+    )
     {
-        var page = 0;
-        string? afterCursor = null;
+        if (pullRequestNumbers.Count == 0)
+            return [];
 
-        var date = olderThen.ToString("yyyy-MM-dd");
-        var pullRequests = new List<GitHubPullRequest>();
-        while (page <= _options.MaxPages)
+        var (owner, repository) = ExtractParts(repo);
+
+        var batchSize = options.Value.MaxPullRequestEntriesInGraphQLRequest;
+
+        var result = new List<GitHubPullRequest>();
+
+        var prNumberChunk = pullRequestNumbers.Distinct()
+                                              .Chunk(batchSize);
+        foreach (var batch in prNumberChunk) // todo: use AsyncEnumerator to avoid loading all PRs into memory at once
         {
-            page++;
-
-            string afterCursorString = afterCursor is null ? "null" : $"\"{afterCursor}\"";
+            var pullRequestFields = string.Join(
+                "\n",
+                batch.Select(number => $$"""
+                                         pr{{number}}: pullRequest(number: {{number}}) {
+                                           merged
+                                           body
+                                           author {
+                                             login
+                                           }
+                                           mergedAt
+                                           baseRef {
+                                             name
+                                           }
+                                           number
+                                           url
+                                         }
+                                         """
+                )
+            );
 
             var query = $$"""
                           {
-                            search(first: 50, query: "is:pr repo:{{repo}} base:{{branch}} is:merged merged:>={{date}}", type: ISSUE, after: {{afterCursorString}}) {
-                              edges {
-                                node {
-                                  ... on PullRequest {
-                                    merged
-                                    body
-                                    user: author {
-                                      login
-                                    }
-                                    mergedAt
-                                    base: baseRef {
-                                      ref: name
-                                    }
-                                    number
-                                    html_url: url
-                                  }
-                                }
-                              }
-                              pageInfo {
-                                hasNextPage
-                                endCursor
-                              }
+                            repository(owner: "{{owner}}", name: "{{repository}}") {
+                              {{pullRequestFields}}
                             }
                           }
                           """;
 
             var request = new GraphQLRequest(query);
-            var response = await graphQlClient.SendQueryAsync<GraphQLResponse>(request);
 
-            pullRequests.AddRange(
-                response.Data.Search.Edges
-                    .Where(edge => edge.Node.MergedAt > olderThen)
-                    .Select(edge => edge.Node)
-            );
+            var response = await graphQlClient.SendQueryAsync<GitHubPullRequestsResponse>(request);
 
-            if (!response.Data.Search.PageInfo.HasNextPage)
-                break;
-
-            afterCursor = response.Data.Search.PageInfo.EndCursor;
+            result.AddRange(response.Data.Repository.Values.Where(x => x is not null)!);
         }
 
-        return pullRequests;
+        return result;
+    }
+
+    private static (string repo, string owner) ExtractParts(string repo)
+    {
+        var parts = repo.Split('/', 2);
+        if (parts.Length != 2)
+        {
+            throw new InvalidOperationException(
+                $"Attempted to split repo name {repo} into repository name and owner parts, "
+                + $"but splitting by '/' resulted in {parts.Length} parts!"
+            );
+        }
+
+        return (parts[0], parts[1]);
     }
 }

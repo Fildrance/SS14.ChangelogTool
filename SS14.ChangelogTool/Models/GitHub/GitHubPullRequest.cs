@@ -9,3 +9,8 @@ public sealed record GitHubPullRequest(
     int Number,
     string Html_url
 );
+
+public sealed class GitHubPullRequestsResponse
+{
+    public Dictionary<string, GitHubPullRequest?> Repository { get; set; } = [];
+}

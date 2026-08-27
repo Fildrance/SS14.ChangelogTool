@@ -1,86 +1,108 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SS14.ChangelogTool.Clients;
-using SS14.ChangelogTool.Models;
 using SS14.ChangelogTool.Models.GitHub;
 using SS14.ChangelogTool.Options;
-using YamlDotNet.Serialization;
+using System.Text.RegularExpressions;
+using SS14.ChangelogTool.LocalGit;
 
 namespace SS14.ChangelogTool.Services;
 
 /// <inheritdoc/>
-public class GitHubPullRequestService(
-    HttpClient ghFileHttpClient,
+public partial class GitHubPullRequestService(
     IGithubPullRequestClient ghPullRequestClient,
+    ILocalGitRepository repository,
     IOptions<ChangelogToolOptions> options,
     ILogger<GitHubPullRequestService> logger
 ) : IGitHubPullRequestService
 {
     private readonly ChangelogToolOptions _options = options.Value;
-    private readonly ILogger<GitHubPullRequestService> _logger = logger;
 
-    private const string GithubRawDownloadBase = "https://raw.githubusercontent.com";
+    /// <summary>
+    /// Matches the trailing PR reference that GitHub appends to squash merged commit messages, e.g. "... (#12345)".
+    /// </summary>
+    [GeneratedRegex(@"\(#(\d+)\)\s*$", RegexOptions.None)]
+    private static partial Regex PullRequestNumberRegex();
 
-    /// <inheritdoc/>
-    public DateTimeOffset GetNewestChangelogEntryMergeDateByRef(string refSha, IReadOnlyCollection<string> extraCategories)
-    {
-        var lastMergedTime = DateTimeOffset.MinValue;
+    /// <summary>
+    /// Detects whether a commit is a revert commit.
+    /// </summary>
+    [GeneratedRegex(@"\brevert\b", RegexOptions.IgnoreCase)]
+    private static partial Regex RevertKeywordRegex();
 
-        var allCategories = new HashSet<string> { _options.PrimaryChangelog };
-        allCategories.UnionWith(extraCategories);
-
-        foreach (var category in allCategories)
-        {
-            var changelogContainer = GetChangelogByRef(refSha, category);
-            var categoryLastMergedTime = DateTimeOffset.MinValue;
-            foreach (var entry in changelogContainer.Entries)
-            {
-                if (string.IsNullOrWhiteSpace(entry.Time))
-                    continue;
-
-                var prMergeTime = DateTimeOffset.Parse(entry.Time.Replace("\'", string.Empty));
-                if (prMergeTime > categoryLastMergedTime)
-                    categoryLastMergedTime = prMergeTime;
-            }
-
-            if (lastMergedTime < categoryLastMergedTime)
-            {
-                lastMergedTime = categoryLastMergedTime;
-            }
-        }
-
-        return lastMergedTime;
-    }
+    /// <summary>
+    /// Matches every integer in a revert commit message, e.g. "Revert: 44644 - 40090 - 37716 - 42439 - 41004 (#44924)"
+    /// yields 44644, 40090, 37716, 42439, 41004 and 44924. The caller should exclude the commit's own trailing PR number.
+    /// </summary>
+    [GeneratedRegex(@"\d+", RegexOptions.None)]
+    private static partial Regex AnyNumberRegex();
 
     /// <inheritdoc/>
-    public async Task<IReadOnlyCollection<GitHubPullRequest>> GetDiff(DateTimeOffset olderThen)
+    public async Task<GitHubDiff> GetDiff(string sinceSha)
     {
         var repo = _options.Repo;
-        var branch = _options.Branch;
-
-        var pullRequests = await ghPullRequestClient.GetPullRequestsOlderThen(repo, branch, olderThen);
-
-        pullRequests = pullRequests.OrderBy(item => item.MergedAt!.Value)
-            .ToList();
-
-        return pullRequests;
-    }
-
-    private ChangelogContainer GetChangelogByRef(string sinceRefSha, string category)
-    {
-        var refChangelogUrl = $"{GithubRawDownloadBase}/{_options.Repo}/{sinceRefSha}/{_options.ChangelogRepoPath}/{category}.yml";
-        HttpRequestMessage request = new(HttpMethod.Get, refChangelogUrl);
-        request.Headers.Add("Authorization", $"Bearer {_options.GithubToken}");
-        var response = ghFileHttpClient.Send(request);
-        if (!response.IsSuccessStatusCode)
+        
+        HashSet<int> pullRequestNumbers = new();
+        HashSet<int> revertedPullRequestNumbers = new();
+        
+        var commitsSinceSha = repository.GetCommitsSince(sinceSha);
+        foreach (var commit in commitsSinceSha)
         {
-            throw new Exception("Could not get changelog content: " + response.Content.ReadAsStringAsync().Result);
+            var match = PullRequestNumberRegex().Match(commit.MessageShort);
+            if (!match.Success)
+            {
+                logger.LogWarning(
+                    "Commit {CommitSha} does not have a pull request number in its message: {CommitMessage}",
+                    commit.Sha,
+                    commit.MessageShort
+                );
+                continue;
+            }
+
+            var number = match.Groups[1].Value;
+            if (!int.TryParse(number, out var prNumber))
+            {
+                logger.LogWarning(
+                    "Commit {CommitSha} have problematic pattern in its message "
+                    + "- it have PR number but it is not a valid number. Commit message: {CommitMessage}",
+                    commit.Sha,
+                    commit.MessageShort
+                ); 
+                continue;
+            }
+
+            pullRequestNumbers.Add(prNumber);
+
+            if (RevertKeywordRegex().IsMatch(commit.MessageShort))
+            {
+                var revertedNumbers = AnyNumberRegex().Matches(commit.MessageShort)
+                                                      .Select(x => x.Value)
+                                                      .Select(int.Parse);
+
+                foreach (var revertedNumber in revertedNumbers)
+                {
+                    if(revertedNumber == prNumber)
+                        continue;
+
+                    // if we added PR in this changelog update - no need
+                    // to actually remove anything but that pr from current updates list
+                    if(!pullRequestNumbers.Remove(revertedNumber))
+                        revertedPullRequestNumbers.Add(revertedNumber);
+                }
+            }
         }
 
-        using var reader = new StreamReader(response.Content.ReadAsStream());
-        var deserializer = new DeserializerBuilder()
-            .Build();
+        logger.LogInformation(
+            "Collected {count} pull request numbers and {revertCount} reverted pull request numbers since {sha}",
+            pullRequestNumbers.Count,
+            revertedPullRequestNumbers.Count,
+            sinceSha
+        );
 
-        return deserializer.Deserialize<ChangelogContainer>(reader);
+        var pullRequests = await ghPullRequestClient.GetPullRequests(repo, pullRequestNumbers);
+        pullRequests = pullRequests.OrderBy(item => item.MergedAt)
+                                   .ToList();
+
+        return new GitHubDiff(pullRequests, revertedPullRequestNumbers);
     }
 }

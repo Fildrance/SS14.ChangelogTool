@@ -16,13 +16,6 @@ public sealed class ChangelogToolOptions
     public required string Repo { get; set; }
 
     /// <summary>
-    /// The branch to use as a base when gathering PRs. should probably be master or stable
-    /// </summary>
-    [Required]
-    [ConfigurationKeyName("BRANCH")]
-    public required string Branch { get; set; }
-
-    /// <summary>
     /// the relative path to the changelog directory. should probably be Resources/Changelog
     /// </summary>
     [Required]
@@ -65,11 +58,10 @@ public sealed class ChangelogToolOptions
     public int DiscordWebhookCharacterLimit { get; set; } = 2000;
 
     /// <summary>
-    /// Maximum number of pages to go through in the graphQL. if you exceed this it means you have not updated the
-    /// changelog in months.
+    /// Amount of pull request entries to fetch in a single GraphQL request.
     /// </summary>
-    [ConfigurationKeyName("MAX_GRAPQHL_PAGES")]
-    public int MaxPages { get; set; } = 50;
+    [ConfigurationKeyName("MAX_PULL_REQUEST_ENTRIES_IN_GRAPHQL_REQUEST")]
+    public int MaxPullRequestEntriesInGraphQLRequest { get; set; } = 50;
 
     /// <summary>
     /// Maximum number of changelog entries to keep in each YAML file; older entries are pruned.
@@ -94,6 +86,6 @@ public sealed class ChangelogToolOptions
     /// Minimum wait time between attempts for gh api calls when api call fails.
     /// Uses exponential backoff retries.
     /// </summary>
-    [ConfigurationKeyName("Min_WAIT_FOR_GIT_HUB_API_SECONDS")]
+    [ConfigurationKeyName("MIN_WAIT_FOR_GIT_HUB_API_SECONDS")]
     public int MinWaitForGitHubApiSeconds { get; set; } = 2;
 }

@@ -10,7 +10,7 @@ namespace SS14.ChangelogTool.Services;
 
 /// <inheritdoc/>
 public partial class GitHubPullRequestService(
-    IGithubPullRequestClient ghPullRequestClient,
+    IGithubGraphQLClient ghGraphQlClient,
     ILocalGitRepository repository,
     IOptions<ChangelogToolOptions> options,
     ILogger<GitHubPullRequestService> logger
@@ -99,7 +99,7 @@ public partial class GitHubPullRequestService(
             sinceSha
         );
 
-        var pullRequests = await ghPullRequestClient.GetPullRequests(repo, pullRequestNumbers);
+        var pullRequests = await ghGraphQlClient.GetPullRequests(repo, pullRequestNumbers);
         pullRequests = pullRequests.OrderBy(item => item.MergedAt)
                                    .ToList();
 

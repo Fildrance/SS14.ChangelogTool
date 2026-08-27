@@ -7,7 +7,7 @@ using SS14.ChangelogTool.Options;
 namespace SS14.ChangelogTool.Clients;
 
 /// <inheritdoc/>
-public class GithubPullRequestClient(IGraphQLClient graphQlClient, IOptions<ChangelogToolOptions> options) : IGithubPullRequestClient
+public class GithubGraphQLClient(IGraphQLClient graphQlClient, IOptions<ChangelogToolOptions> options) : IGithubGraphQLClient
 {
     public const string GithubGraphQLApiBase = "https://api.github.com/graphql";
 
@@ -28,7 +28,7 @@ public class GithubPullRequestClient(IGraphQLClient graphQlClient, IOptions<Chan
 
         var prNumberChunk = pullRequestNumbers.Distinct()
                                               .Chunk(batchSize);
-        foreach (var batch in prNumberChunk) // todo: use AsyncEnumerator to avoid loading all PRs into memory at once
+        foreach (var batch in prNumberChunk)
         {
             var pullRequestFields = string.Join(
                 "\n",
@@ -63,6 +63,57 @@ public class GithubPullRequestClient(IGraphQLClient graphQlClient, IOptions<Chan
             var response = await graphQlClient.SendQueryAsync<GitHubPullRequestsResponse>(request);
 
             result.AddRange(response.Data.Repository.Values.Where(x => x is not null)!);
+        }
+
+        return result;
+    }
+
+    public async Task<List<(string Sha, string Owner, string Repo)>> GetOwnedBy(List<string> shaListToDiscover)
+    {
+        if (shaListToDiscover.Count == 0)
+            return [];
+
+        var chunkSize = options.Value.MaxCommitEntriesInGraphQLRequest;
+        var chunks = shaListToDiscover.Distinct()
+                                      .Chunk(chunkSize);
+
+        var result = new List<(string Sha, string Owner, string Repo)>();
+
+        foreach (var chunk in chunks) 
+        {
+            var queryParts = new List<string>();
+            for (int i = 0; i < chunk.Length; i++)
+            {
+                queryParts.Add(
+                    $$"""
+                      commit_{{i}}: search(q: "{{chunk[i]}} is:pr is:merged", type: ISSUE, first: 1) {
+                          nodes {
+                              ... on PullRequest {
+                                  url
+                                  repository {
+                                      nameWithOwner
+                                  }
+                              }
+                          }
+                      }
+                      """
+                    );
+            }
+            var query = "query {" + string.Join("", queryParts) + "}";
+
+            var request = new GraphQLRequest(query);
+
+            var response = await graphQlClient.SendQueryAsync<GitHubBatchResponse>(request);
+            var data = response.Data.Commits.Values.SelectMany(x => x.Nodes);
+            // graphQL guarantees ordering of results
+            // https://github.com/graphql/graphql-spec/blob/main/spec/Section%207%20--%20Response.md#serialized-map-ordering
+            var index = 0;
+            foreach (var pullRequestInfo in data)
+            {
+                var parts = ExtractParts(pullRequestInfo.Repository.NameWithOwner);
+                result.Add((chunk[index], parts.owner, parts.repo));
+                index++;
+            }
         }
 
         return result;

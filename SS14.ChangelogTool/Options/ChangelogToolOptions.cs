@@ -55,6 +55,12 @@ public sealed class ChangelogToolOptions
     public int MaxPullRequestEntriesInGraphQLRequest { get; set; } = 50;
 
     /// <summary>
+    /// Amount of commit entries to fetch in a single GraphQL request.
+    /// </summary>
+    [ConfigurationKeyName("MAX_COMMIT_ENTRIES_IN_GRAPHQL_REQUEST")]
+    public int MaxCommitEntriesInGraphQLRequest { get; set; } = 50;
+
+    /// <summary>
     /// Maximum number of changelog entries to keep in each YAML file; older entries are pruned.
     /// </summary>
     [ConfigurationKeyName("MAX_CHANGELOG_ENTRIES")]

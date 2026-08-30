@@ -16,7 +16,7 @@ public sealed class ChangelogToolOptions
     public required string Repo { get; set; }
 
     /// <summary>
-    /// the relative path to the changelog directory. should probably be Resources/Changelog
+    /// The relative path to the changelog directory. Should probably be Resources/Changelog.
     /// </summary>
     [Required]
     [ConfigurationKeyName("CHANGELOG_REPO_PATH")]

@@ -133,22 +133,28 @@ public class ChangelogFileManager(ILocalGitRepository repository, IOptions<Chang
 
             var lastEntryId = entries.Max(x => x.Id);
 
+            var existingPullRequestNumbers = entries.Select(
+                x => TryGetPullRequestNumber(x.Url, out var prNumber) ? prNumber : -1
+            ).Where(x => x != -1)
+             .ToHashSet();
+
             if (changelogParts.TryGetValue(category, out var changelogEntries))
             {
                 foreach (var changelogEntry in changelogEntries)
                 {
+                    if (!TryGetPullRequestNumber(changelogEntry.Url, out var prNumber))
+                        continue;
+
+                    if (!existingPullRequestNumbers.Add(prNumber))
+                        continue;
+
+                    if (revertedSet.Contains(prNumber))
+                        continue;
+
                     changelogEntry.Id = ++lastEntryId;
-                    result.Entries.Add(changelogEntry);
+                    entries.Add(changelogEntry);
                 }
             }
-
-            entries.RemoveAll(entry =>
-            {
-                if (!TryGetPullRequestNumber(entry.Url, out var prNumber))
-                    return false;
-
-                return revertedSet.Contains(prNumber);
-            });
 
             var exceededBy = entries.Count - _maxChangelogEntries;
             if (exceededBy > 0)
@@ -164,6 +170,7 @@ public class ChangelogFileManager(ILocalGitRepository repository, IOptions<Chang
             using var writer = new StreamWriter(streamToWrite);
             var serializer = new SerializerBuilder()
                 .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull)
+                .DisableAliases()
                 .Build();
             serializer.Serialize(writer, result);
         }

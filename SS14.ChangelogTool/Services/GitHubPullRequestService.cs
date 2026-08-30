@@ -115,9 +115,11 @@ public partial class GitHubPullRequestService(
         int[] reverts = [];
         if (RevertKeywordRegex().IsMatch(commit.MessageShort))
         {
-            var revertedNumbers = AnyNumberRegex().Matches(commit.MessageShort)
-                                                  .Select(x => x.Value)
-                                                  .Select(int.Parse);
+            var revertedNumbers = AnyNumberRegex()
+                                  .Matches(commit.MessageShort)
+                                  .Select(x => x.Value)
+                                  .Where(x => x != number)
+                                  .Select(int.Parse);
 
             reverts = revertedNumbers.ToArray();
         }

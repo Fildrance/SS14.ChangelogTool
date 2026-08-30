@@ -44,9 +44,9 @@ public class GitHubPullRequestServiceTests
     }
 
     [Theory]
-    [InlineData("[STAGING] Revert: 44644 - 40090 - 37716 - 42439 - 41004 (#44924)", new[] { 44644, 40090, 37716, 42439, 41004 }, 44924)]
-    [InlineData("[STAGING] Revert 36673 and Fix Changelog (#44929)", new[] { 36673 }, 44929)]
-    public async Task GetDiff_HasRevertCommit_PutsRevertedNumbersInRevertedList(string commitMessage, int[] expectedReverted, int selfPullRequestNumber)
+    [InlineData("[STAGING] Revert: 44644 - 40090 - 37716 - 42439 - 41004 (#44924)", new[] { 44644, 40090, 37716, 42439, 41004 })]
+    [InlineData("[STAGING] Revert 36673 and Fix Changelog (#44929)", new[] { 36673 })]
+    public async Task GetDiff_HasRevertCommit_PutsRevertedNumbersInRevertedList(string commitMessage, int[] expectedReverted)
     {
         // Arrange
         _repository.GetCommitsSince(SinceSha)
@@ -58,11 +58,6 @@ public class GitHubPullRequestServiceTests
         // Assert: the reverted PR numbers are collected, and the revert PR itself is not among them
         Assert.Equal(expectedReverted.OrderBy(x => x), diff.RevertedPullRequestNumbers.OrderBy(x => x));
         Assert.All(expectedReverted, n => Assert.DoesNotContain(n, diff.PullRequests.Select(pr => pr.Number)));
-
-        // We remove revert PR from changes too
-        await _client.Received(1).GetPullRequests(
-            Repo,
-            Arg.Is<IReadOnlyCollection<int>>(numbers => numbers != null && numbers.Count == 0));
     }
 
     [Fact]

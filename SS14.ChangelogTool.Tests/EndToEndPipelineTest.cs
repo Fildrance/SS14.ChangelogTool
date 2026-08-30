@@ -424,7 +424,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
     }
 
     [Fact]
-    public void UpdateCommand_HasRevertedPullRequests_RemovesTheirEntriesFromChangelog()
+    public void UpdateCommand_HasAddedAndRevertedPullRequests_RevertedChangeRemovedButRevertChangeExist()
     {
         // Arrange
         var services = new ServiceCollection();
@@ -455,8 +455,45 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         // Assert
         Assert.Equal(0, invokeResult);
         var updatedContent = File.ReadAllText(Path.Combine(virtualDir, "Changelog.yml"));
-        Assert.DoesNotContain("Lizards can laugh again!", updatedContent);
-        Assert.DoesNotContain("/pull/42696", updatedContent);
+        Assert.Contains("Lizards can laugh again!", updatedContent);
+        Assert.Contains("/pull/42696", updatedContent);
+        Assert.Contains("Cyborgs can now pry unpowered doors without the need for a crowbar", updatedContent);
+    }
+
+    [Fact]
+    public void UpdateCommand_HasRevertedPullRequestsFromExistingContent_DoesNotRemoveEntry()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        services.RegisterDependencies();
+
+        OverrideOptions(services);
+
+        const string lastChangeSha = "last-change-sha";
+        SetupLocalRepository(services, lastChangeSha, [new("some-sha", "fgdfgs (#5234)")]);
+
+        services.RemoveAll<IGitHubPullRequestService>();
+        var ghService = Substitute.For<IGitHubPullRequestService>();
+        ghService.GetDiff(lastChangeSha)
+                 .Returns(new GitHubDiff(
+                     [],
+                     [42915, 42696]
+                 ));
+        services.AddSingleton(ghService);
+
+        var virtualDir = CopyExistingChangelogs();
+        var sp = services.BuildServiceProvider();
+        var command = sp.GetRequiredService<RootCommand>();
+
+        // Act
+        var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\"");
+        var invokeResult = parseResult.Invoke(_invocationConfiguration);
+
+        // Assert
+        Assert.Equal(0, invokeResult);
+        var updatedContent = File.ReadAllText(Path.Combine(virtualDir, "Changelog.yml"));
+        Assert.Contains("Lizards can laugh again!", updatedContent);
+        Assert.Contains("/pull/42696", updatedContent);
         Assert.Contains("Cyborgs can now pry unpowered doors without the need for a crowbar", updatedContent);
     }
 

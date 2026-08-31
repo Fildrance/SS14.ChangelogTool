@@ -70,57 +70,76 @@ public class GithubGraphQLClient(IGraphQLClient graphQlClient, IOptions<Changelo
         return result;
     }
 
-    public async Task<IReadOnlyCollection<(string Sha, string RepoWithOwner)>> GetOwnedBy(IReadOnlyCollection<string> shaListToDiscover)
+    /// <inheritdoc/>
+    public async Task<IReadOnlyCollection<string>> GetCommitsIntroducedByRepo(
+        IReadOnlyCollection<(string Sha, int PullRequestNumber)> shaAndPrNumber,
+        string repo
+    )
     {
-        if (shaListToDiscover.Count == 0)
+        if (shaAndPrNumber.Count == 0)
             return [];
 
+        var (owner, repository) = ExtractParts(repo);
+
         var chunkSize = options.Value.MaxCommitEntriesInGraphQLRequest;
-        var chunks = shaListToDiscover.Distinct()
-                                      .Chunk(chunkSize);
+        var chunks = shaAndPrNumber.DistinctBy(x => x.Sha)
+                                   .Chunk(chunkSize);
 
-        var result = new List<(string Sha, string RepoWithOwner)>();
+        var result = new List<string>();
 
-        foreach (var chunk in chunks) 
+        foreach (var chunk in chunks)
         {
             var queryParts = new List<string>();
             for (int i = 0; i < chunk.Length; i++)
             {
                 queryParts.Add(
                     $$"""
-                      commit_{{i}}: search(query: "{{chunk[i]}} is:pr is:merged", type: ISSUE, first: 1) {
-                          nodes {
-                              ... on PullRequest {
-                                  url
-                                  repository {
-                                      nameWithOwner
+                      commit_{{i}}: object(oid: "{{chunk[i].Sha}}") {
+                          ... on Commit {
+                              associatedPullRequests(first: 1) {
+                                  nodes {
+                                      number
+                                      mergeCommit {
+                                          oid
+                                      }
                                   }
                               }
                           }
                       }
                       """
-                    );
+                );
             }
-            var query = "query {" + string.Join("", queryParts) + "}";
+
+            var query = $$"""
+                          {
+                            repository(owner: "{{owner}}", name: "{{repository}}") {
+                              {{string.Join("\n", queryParts)}}
+                            }
+                          }
+                          """;
 
             var request = new GraphQLRequest(query);
 
-            var response = await graphQlClient.SendQueryAsync<Dictionary<string, CommitSearchNode>>(request);
+            var response = await graphQlClient.SendQueryAsync<RepositoryCommitSearchResponse>(request);
 
             EnsureSuccessful(response);
 
-            // The response contains one field per search, aliased as commit_{i}. Look each chunk entry up by its own
-            // alias so SHAs stay correctly paired even when a search returns no matching pull requests.
+            // A commit was introduced by the repository iff some pull request in it was merged from exactly
+            // this SHA and its number matches the one referenced by the commit message.
             for (var i = 0; i < chunk.Length; i++)
             {
-                if (!response.Data.TryGetValue($"commit_{i}", out var searchResult))
+                if (!response.Data.Repository.TryGetValue($"commit_{i}", out var commitObject)
+                    || commitObject?.AssociatedPullRequests is null)
+                {
                     continue;
+                }
 
-                var pullRequest = searchResult.Nodes.FirstOrDefault();
-                if (pullRequest is null)
-                    continue;
-
-                result.Add((chunk[i], pullRequest.Repository.NameWithOwner));
+                var currentSha = chunk[i];
+                var isIntroducedByRepo = commitObject.AssociatedPullRequests.Nodes.Any(
+                    pr => pr.MergeCommit?.Oid == currentSha.Sha && pr.Number == currentSha.PullRequestNumber
+                );
+                if (isIntroducedByRepo)
+                    result.Add(currentSha.Sha);
             }
         }
 
@@ -132,7 +151,7 @@ public class GithubGraphQLClient(IGraphQLClient graphQlClient, IOptions<Changelo
         if (response.Errors is { Length: > 0 })
         {
             throw new InvalidOperationException(
-                "GitHub GraphQL search failed when discovering commit owners: "
+                "GitHub GraphQL request failed when discovering commit owners: "
                 + string.Join("; ", response.Errors.Select(e => e.Message))
             );
         }

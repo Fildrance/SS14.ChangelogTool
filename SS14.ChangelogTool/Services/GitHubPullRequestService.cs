@@ -132,13 +132,9 @@ public partial class GitHubPullRequestService(
         if (!_options.IsProcessOnlyFromCurrentRepoEnabled)
             return commitsSinceSha;
 
-        var shaListToDiscover = commitsSinceSha.Select(x => x.Commit.Sha)
-                                               .ToArray();
-        var withOwners = await ghGraphQlClient.GetOwnedBy(shaListToDiscover);
-
-        var onlyFromCurrentRepo = withOwners.Where(x => x.RepoWithOwner == repo)
-                                            .Select(x => x.Sha)
-                                            .ToHashSet();
+        var shaAndPrNumber = commitsSinceSha.Select(x => (x.Commit.Sha, x.PrNum.Number))
+                                            .ToArray();
+        var onlyFromCurrentRepo = await ghGraphQlClient.GetCommitsIntroducedByRepo(shaAndPrNumber, repo);
 
         return commitsSinceSha.Where(x => onlyFromCurrentRepo.Contains(x.Commit.Sha))
                               .ToArray();

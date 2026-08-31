@@ -15,11 +15,16 @@ public interface IGithubGraphQLClient
     Task<IReadOnlyCollection<GitHubPullRequest>> GetPullRequests(string repo, IReadOnlyCollection<int> pullRequestNumbers);
 
     /// <summary>
-    /// Extracts information about which in which repo was commit originally added.
-    /// All squash-merged commits would be owned by respective repos.
-    /// Uses batching.
+    /// Returns the set of sha which introduced by the specified <paramref name="repo"/>.
+    /// A commit is introduced by a repository if that repository contains a merged
+    /// pull request whose merge commit is exactly this SHA and whose number
+    /// matches the one referenced by the commit message.
     /// </summary>
-    /// <param name="shaListToDiscover">List of SHA that we need detect owner repo for.</param>
-    /// <returns>Pairs of SHA, Owner and RepoName (in format of 'owner/repo').</returns>
-    Task<IReadOnlyCollection<(string Sha, string RepoWithOwner)>> GetOwnedBy(IReadOnlyCollection<string> shaListToDiscover);
+    /// <param name="shaAndPrNumber">List of SHA and expected pull request number pairs to check.</param>
+    /// <param name="repo">Repository to check against, in format of 'owner/repo'.</param>
+    /// <returns>SHAs that were introduced by the specified repository.</returns>
+    Task<IReadOnlyCollection<string>> GetCommitsIntroducedByRepo(
+        IReadOnlyCollection<(string Sha, int PullRequestNumber)> shaAndPrNumber,
+        string repo
+    );
 }

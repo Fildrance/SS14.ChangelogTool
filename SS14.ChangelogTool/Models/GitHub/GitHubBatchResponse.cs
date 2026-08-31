@@ -2,23 +2,34 @@
 
 namespace SS14.ChangelogTool.Models.GitHub;
 
-public class RepositoryInfo
+public class RepositoryCommitSearchResponse
 {
-    [JsonPropertyName("nameWithOwner")]
-    public string NameWithOwner { get; set; } = string.Empty;
+    public Dictionary<string, CommitObjectResult?> Repository { get; set; } = [];
 }
 
-public class PullRequestInfo
+public class CommitObjectResult
 {
-    [JsonPropertyName("url")]
-    public string Url { get; set; } = string.Empty;
-
-    [JsonPropertyName("repository")]
-    public RepositoryInfo Repository { get; set; } = new();
+    [JsonPropertyName("associatedPullRequests")]
+    public AssociatedPullRequestsConnection? AssociatedPullRequests { get; set; }
 }
 
-public class CommitSearchNode
+public class AssociatedPullRequestsConnection
 {
     [JsonPropertyName("nodes")]
-    public List<PullRequestInfo> Nodes { get; set; } = new();
+    public List<AssociatedPullRequestInfo> Nodes { get; set; } = [];
+}
+
+public class AssociatedPullRequestInfo
+{
+    [JsonPropertyName("number")]
+    public int Number { get; set; }
+
+    [JsonPropertyName("mergeCommit")]
+    public MergeCommitInfo? MergeCommit { get; set; }
+}
+
+public class MergeCommitInfo
+{
+    [JsonPropertyName("oid")]
+    public string? Oid { get; set; }
 }

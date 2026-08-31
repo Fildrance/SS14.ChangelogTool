@@ -90,8 +90,8 @@ public class GitHubPullRequestServiceTests
 
         _client.ClearSubstitute();
 
-        _client.GetOwnedBy(Arg.Any<IReadOnlyCollection<string>>())
-               .Returns([("some-sha1", Repo), ("some-sha2", _changelogToolOptions.Repo)]);
+        _client.GetCommitsIntroducedByRepo(Arg.Any<IReadOnlyCollection<(string, int)>>(), Arg.Any<string>())
+               .Returns(["some-sha2"]);
 
         _client.GetPullRequests(Arg.Any<string>(), Arg.Any<IReadOnlyCollection<int>>())
                .Returns(

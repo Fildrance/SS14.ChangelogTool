@@ -45,6 +45,9 @@ public partial class GitHubPullRequestService(
         // we first get list of commits since provided point til HEAD
         var commitsSinceSha = repository.GetCommitsSince(sinceSha);
 
+        if(logger.IsEnabled(LogLevel.Trace))
+            logger.LogTrace("Got commit history since {sha}: {history}", sinceSha, string.Join(", ", commitsSinceSha.Select(x => x.Sha)));
+
         // then we try to extract PR and revert numbers from commit messages
         // - its cheap and does basic filtering as we skip every commit that 
         // was not properly formatted.
@@ -123,6 +126,9 @@ public partial class GitHubPullRequestService(
 
             reverts = revertedNumbers.ToArray();
         }
+
+        if(logger.IsEnabled(LogLevel.Trace))
+            logger.LogTrace("For commit {sha} detected PR number {prNumber}.", commit.Sha, prNumber);
 
         return new(prNumber, reverts);
     }

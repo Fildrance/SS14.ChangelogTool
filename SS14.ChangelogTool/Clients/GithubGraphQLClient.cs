@@ -1,5 +1,6 @@
 ﻿using GraphQL;
 using GraphQL.Client.Abstractions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SS14.ChangelogTool.Models.GitHub;
 using SS14.ChangelogTool.Options;
@@ -7,7 +8,11 @@ using SS14.ChangelogTool.Options;
 namespace SS14.ChangelogTool.Clients;
 
 /// <inheritdoc/>
-public class GithubGraphQLClient(IGraphQLClient graphQlClient, IOptions<ChangelogToolOptions> options) : IGithubGraphQLClient
+public class GithubGraphQLClient(
+    IGraphQLClient graphQlClient, 
+    IOptions<ChangelogToolOptions> options, 
+    ILogger<GithubGraphQLClient> logger
+) : IGithubGraphQLClient
 {
     public const string GithubGraphQLApiBase = "https://api.github.com/graphql";
 
@@ -128,18 +133,32 @@ public class GithubGraphQLClient(IGraphQLClient graphQlClient, IOptions<Changelo
             // this SHA and its number matches the one referenced by the commit message.
             for (var i = 0; i < chunk.Length; i++)
             {
+                var currentSha = chunk[i];
+
                 if (!response.Data.Repository.TryGetValue($"commit_{i}", out var commitObject)
                     || commitObject?.AssociatedPullRequests is null)
                 {
+                    logger.LogTrace(
+                        "Failed to resolve commit with SHA {sha} while detecting its origin, "
+                        + "probably means it is not originating from {repo} repository.", 
+                        currentSha, 
+                        repo
+                    );
                     continue;
                 }
 
-                var currentSha = chunk[i];
                 var isIntroducedByRepo = commitObject.AssociatedPullRequests.Nodes.Any(
                     pr => pr.MergeCommit?.Oid == currentSha.Sha && pr.Number == currentSha.PullRequestNumber
                 );
                 if (isIntroducedByRepo)
+                {
                     result.Add(currentSha.Sha);
+                    logger.LogTrace("Commit {sha} is from {repo}", currentSha, repo);
+                }
+                else
+                {
+                    logger.LogTrace("Commit {sha} is not from {repo}", currentSha, repo);
+                }
             }
         }
 

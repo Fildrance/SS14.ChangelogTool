@@ -37,6 +37,7 @@ public partial class ChangelogParserService(ILogger<ChangelogParserService> logg
                     list = [];
                     changesByCategory[category] = list;
                 }
+
                 list.Add(changelogEntry);
             }
         }

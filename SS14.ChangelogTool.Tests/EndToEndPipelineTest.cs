@@ -1,17 +1,18 @@
+using LibGit2Sharp;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NSubstitute;
+using SS14.ChangelogTool.LocalGit;
+using SS14.ChangelogTool.LocalGit.Models;
 using SS14.ChangelogTool.Models.GitHub;
 using SS14.ChangelogTool.Options;
 using SS14.ChangelogTool.Services;
+using SS14.ChangelogTool.Tests.TestInfrastructure;
 using System.CommandLine;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using SS14.ChangelogTool.LocalGit;
-using SS14.ChangelogTool.Tests.TestInfrastructure;
 using Xunit.Abstractions;
-using SS14.ChangelogTool.LocalGit.Models;
 
 namespace SS14.ChangelogTool.Tests;
 
@@ -105,6 +106,98 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
                                      
                                      """;
         Assert.EndsWith(expectedEntry, updatedContent);
+    }
+
+
+    [Fact]
+    public void UpdateCommand_HaveFixedSha_WritesNewEntryToChangelog()
+    {
+        // Arrange: use the full DI setup from Registry, then override test-specific parts
+        var services = new ServiceCollection();
+        services.RegisterDependencies();
+
+        OverrideOptions(services);
+
+        const string fixedSha = "some-sha";
+        services.RemoveAll<ILocalGitRepository>();
+
+        var repo = Substitute.For<ILocalGitRepository>();
+
+        repo.GetCommitsSince(fixedSha)
+            .Returns([new CommitBriefInfo("some-other-sha", "fgdfgs (#5234)")]);
+
+        services.AddSingleton(repo);
+
+        // Stub out the GitHub service so it doesn't try to make real HTTP calls
+        services.RemoveAll<IGitHubPullRequestService>();
+        var ghService = Substitute.For<IGitHubPullRequestService>();
+        ghService.GetDiff(fixedSha)
+                 .Returns(new GitHubDiff(
+                     [
+                         new GitHubPullRequest(
+                             Merged: true,
+                             """
+                             Adds the cool feature!
+ 
+                             :cl:
+                             - add: Integration test feature
+                             """,
+                             new GitHubUser("TestUser"),
+                             new DateTimeOffset(new DateTime(2022,12,5,12,3,5), TimeSpan.Zero),
+                             new GitHubPullRequestBase("master"),
+                             Number: 42,
+                             "https://example.com/pr/42"
+                         )
+                     ],
+                     []
+                 ));
+        services.AddSingleton(ghService);
+
+        // Use temp directory with resource files for this integration-style test
+        var virtualDir = CopyExistingChangelogs();
+
+        var sp = services.BuildServiceProvider();
+        var command = sp.GetRequiredService<RootCommand>();
+
+        // Act: invoke UpdateCommand just like the real program does
+        var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\" -s {fixedSha}");
+        var invokeResult = parseResult.Invoke(_invocationConfiguration);
+
+        // Assert
+        Assert.Equal(0, invokeResult);
+
+        // the Changelog.yml now contains our integration test change
+        var changelogPath = Path.Combine(virtualDir, "Changelog.yml");
+        var updatedContent = File.ReadAllText(changelogPath);
+
+        // Verify pre-existing entries and new ones are still there
+        const string oldEntryExistingAfterRolling =
+            """
+            - author: ThatGuyUSA
+              changes:
+              - message: There are more IDs and icons that can be used for a variety of roles.
+                type: Add
+              id: 9355
+              time: '2026-01-06T10:41:32.0000000+00:00'
+              url: https://github.com/space-wizards/space-station-14/pull/42200
+            """;
+
+        Assert.Contains(oldEntryExistingAfterRolling, updatedContent);
+
+        const string expectedEntry = """
+                                     - author: TestUser
+                                       changes:
+                                       - message: Integration test feature
+                                         type: Add
+                                       id: 9862
+                                       time: '2022-12-05T12:03:05.0000000+00:00'
+                                       url: https://example.com/pr/42
+                                     
+                                     """;
+        Assert.EndsWith(expectedEntry, updatedContent);
+
+        repo.DidNotReceive()
+            .GetLastCommitData(Arg.Any<string>());
     }
 
     [Fact]

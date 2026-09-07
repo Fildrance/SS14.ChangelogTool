@@ -48,6 +48,7 @@ Recommended minimal local setup configuration
   Revert commits (messages containing "revert", e.g. `Revert: 44644 - 40090 - 37716 - 42439 - 41004 (#44924)`) are
   recognized as well: the referenced PRs are removed from the incoming entries and their existing changelog entries
   are deleted from the YAML files.
+- Use `-ac` / `--allow-create` argument to force creation of new changelog files for categories that don't exist yet. Otherwise, the tool will throw error upon detecting missing files.
 
   Example:
   ```powershell

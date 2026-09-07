@@ -2,8 +2,9 @@
 
 public enum ChangeType
 {
+    Unknown = 0,
     Add,
     Remove,
     Fix,
-    Tweak
+    Tweak,
 }

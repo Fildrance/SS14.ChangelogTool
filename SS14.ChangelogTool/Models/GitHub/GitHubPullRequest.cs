@@ -7,7 +7,7 @@ public sealed record GitHubPullRequest(
     DateTimeOffset? MergedAt,
     GitHubPullRequestBase? Base,
     int Number,
-    string Html_url
+    string Url
 );
 
 public sealed class GitHubPullRequestsResponse

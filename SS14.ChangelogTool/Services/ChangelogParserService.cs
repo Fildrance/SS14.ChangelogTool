@@ -96,7 +96,6 @@ public partial class ChangelogParserService(ILogger<ChangelogParserService> logg
                 "remove" => ChangeType.Remove,
                 "fix" or "bugfix" or "bug" => ChangeType.Fix,
                 "tweak" => ChangeType.Tweak,
-                "experimental" => ChangeType.Experimental,
                 _ => ChangeType.Unknown,
             };
 

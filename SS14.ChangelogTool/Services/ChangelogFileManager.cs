@@ -29,7 +29,7 @@ public class ChangelogFileManager(ILocalGitRepository repository, IOptions<Chang
     /// <inheritdoc/>
     public string GetLastMergedSha(string changelogDir, IReadOnlyCollection<string>? extraCategories = null)
     {
-        var allCategories = new HashSet<string> { "Changelog" };
+        var allCategories = new HashSet<string> { _options.PrimaryChangelog };
         if (extraCategories is not null)
             allCategories.UnionWith(extraCategories);
 
@@ -95,7 +95,9 @@ public class ChangelogFileManager(ILocalGitRepository repository, IOptions<Chang
     public void UpdateChangelogs(
         Dictionary<string, List<ChangelogEntry>> changelogParts,
         IReadOnlyCollection<int> revertedPullRequestNumbers,
-        string changelogDir)
+        string changelogDir,
+        bool canCreate = false
+    )
     {
         var revertedSet = revertedPullRequestNumbers.ToHashSet();
 
@@ -115,7 +117,7 @@ public class ChangelogFileManager(ILocalGitRepository repository, IOptions<Chang
                 continue;
 
             var categoryFile = category == Constants.MainCategory
-                ? "Changelog"
+                ? _options.PrimaryChangelog
                 : category;
 
             var changelogYmlPath = Path.Combine(changelogDir, $"{categoryFile}.yml");
@@ -123,15 +125,36 @@ public class ChangelogFileManager(ILocalGitRepository repository, IOptions<Chang
             logger.LogInformation("Writing changelog part {ChangelogYmlPath}", changelogYmlPath);
 
             ChangelogContainer result;
-            using (var streamToRead = File.OpenRead(changelogYmlPath))
+            if (!canCreate && !File.Exists(changelogYmlPath))
+                throw new InvalidOperationException(
+                    $"Tool is in 'Do not create missing' mode, and file on path '{changelogYmlPath}' does not exist. "
+                    + $"Please create file manually or use '--allow-create' or '-ac' argument."
+                );
+
+            using (var streamToRead = File.Open(changelogYmlPath, FileMode.OpenOrCreate))
             {
-                var content = new StreamReader(streamToRead);
-                result = deserializer.Deserialize<ChangelogContainer>(content);
+                // if file is empty, then it probably was just created.
+                // so we put same name as file and order is something greater,
+                // then what we have for usual files.
+                if (streamToRead.Length == 0)
+                {
+                    result = new ChangelogContainer
+                    {
+                        Name = categoryFile,
+                        Order = 100
+                    };
+                }
+                else
+                {
+                    var content = new StreamReader(streamToRead);
+                    result = deserializer.Deserialize<ChangelogContainer>(content);
+                }
             }
 
             var entries = result.Entries;
-
-            var lastEntryId = entries.Max(x => x.Id);
+            var lastEntryId = entries.Count == 0 
+                ? 1 
+                : entries.Max(x => x.Id);
 
             var existingPullRequestNumbers = entries.Select(
                 x => TryGetPullRequestNumber(x.Url, out var prNumber) ? prNumber : -1

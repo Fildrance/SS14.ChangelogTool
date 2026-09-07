@@ -366,7 +366,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
     [InlineData(null)] // Base case
     [InlineData("Gooblog")] // Modified primary changelog
     [InlineData("Maps")]
-    public void UpdateWithMultipleChangeTypesInOnePREntryAndPrimaryChangelog(string? primaryChangelog = null)
+    public void UpdateWithMultipleChangeTypesInOnePREntryAndPrimaryChangelogAndAllowCreate(string? primaryChangelog = null)
     {
         // Arrange
         var services = new ServiceCollection();
@@ -410,7 +410,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         var command = sp.GetRequiredService<RootCommand>();
 
         // Act
-        var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\"");
+        var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\" -ac");
         var invokeResult = parseResult.Invoke(_invocationConfiguration);
 
         // Assert
@@ -424,6 +424,58 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         Assert.Contains("Fixed a bug", updatedContent);
         Assert.Contains("Tweaked some values", updatedContent);
         Assert.Contains("Removed old thing", updatedContent);
+    }
+
+
+    [Fact]
+    public void UpdateWithNonExistingFileAndNoAllowCreateFails()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        services.RegisterDependencies();
+
+        OverrideOptions(services, primaryChangelog: "Gooblog");
+
+        const string lastChangeSha = "last-change-sha";
+        SetupLocalRepository(services, lastChangeSha, [new("some-sha", "fgdfgs (#5234)")]);
+
+        services.RemoveAll<IGitHubPullRequestService>();
+        var ghService = Substitute.For<IGitHubPullRequestService>();
+        ghService.GetDiff(lastChangeSha)
+                 .Returns(new GitHubDiff(
+                     [
+                         new GitHubPullRequest(
+                             Merged: true,
+                             """
+                             Big update with many changes!
+
+                             :cl:
+                             - add: Added something new
+                             - fix: Fixed a bug
+                             - tweak: Tweaked some values
+                             - remove: Removed old thing
+                             """,
+                             new GitHubUser("MultiChangeUser"),
+                             new DateTimeOffset(new DateTime(2023,8,20,9,30,0), TimeSpan.Zero),
+                             new GitHubPullRequestBase("master"),
+                             Number: 150,
+                             "https://example.com/pr/150"
+                         )
+                     ],
+                     []
+                 ));
+        services.AddSingleton(ghService);
+
+
+        var virtualDir = CopyExistingChangelogs();
+        var sp = services.BuildServiceProvider();
+        var command = sp.GetRequiredService<RootCommand>();
+
+        // Act
+        var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\"");
+        
+        // Assert
+        Assert.Throws<InvalidOperationException>(() => parseResult.Invoke(_invocationConfiguration));
     }
 
     [Fact]

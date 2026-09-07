@@ -94,7 +94,9 @@ public class ChangelogFileManager(ILocalGitRepository repository, IOptions<Chang
     public void UpdateChangelogs(
         Dictionary<string, List<ChangelogEntry>> changelogParts,
         IReadOnlyCollection<int> revertedPullRequestNumbers,
-        string changelogDir)
+        string changelogDir,
+        bool canCreate = false
+    )
     {
         var revertedSet = revertedPullRequestNumbers.ToHashSet();
 
@@ -122,6 +124,12 @@ public class ChangelogFileManager(ILocalGitRepository repository, IOptions<Chang
             logger.LogInformation("Writing changelog part {ChangelogYmlPath}", changelogYmlPath);
 
             ChangelogContainer result;
+            if (!canCreate && !File.Exists(changelogYmlPath))
+                throw new InvalidOperationException(
+                    $"Tool is in 'Do not create missing' mode, and file on path '{changelogYmlPath}' does not exist. "
+                    + $"Please create file manually or use '--allow-create' or '-ac' argument."
+                );
+
             using (var streamToRead = File.Open(changelogYmlPath, FileMode.OpenOrCreate))
             {
                 // if file is empty, then it probably was just created.

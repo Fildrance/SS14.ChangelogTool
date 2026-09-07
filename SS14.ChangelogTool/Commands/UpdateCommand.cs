@@ -16,12 +16,21 @@ public sealed class UpdateCommand : Command
 
         Options.Add(changelogDirOption);
 
+        var allowCreateOption = new Option<bool>("--allow-create", "-ac")
+        {
+            Description = "Marker, if tool should create changelog file that it expects but failed to find, or just throw exception and stop",
+            Required = false
+        };
+
+        Options.Add(allowCreateOption);
+
         SetAction(async parseResult =>
         {
             var changeLogDir = parseResult.GetValue(changelogDirOption)!;
+            var allowCreate = parseResult.GetValue(allowCreateOption)!;
             return await changelogGenerator.TryGenerate(
                 extraCategories => changelogFileManager.GetLastMergedSha(changeLogDir, extraCategories),
-                (changelogs, revertedPrNumbers) => changelogFileManager.UpdateChangelogs(changelogs, revertedPrNumbers, changeLogDir)
+                (changelogs, revertedPrNumbers) => changelogFileManager.UpdateChangelogs(changelogs, revertedPrNumbers, changeLogDir, allowCreate)
             ) ? 0 : 1;
         });
     }

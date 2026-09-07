@@ -455,14 +455,79 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         Assert.Equal(originalContent, updatedContent);
     }
 
-    [Fact]
-    public void UpdateWithMultipleChangeTypesInOnePREntry()
+    [Theory]
+    [InlineData(null)] // Base case
+    [InlineData("Gooblog")] // Modified primary changelog
+    [InlineData("Maps")]
+    public void UpdateWithMultipleChangeTypesInOnePREntryAndPrimaryChangelogAndAllowCreate(string? primaryChangelog = null)
     {
         // Arrange
         var services = new ServiceCollection();
         services.RegisterDependencies();
 
-        OverrideOptions(services);
+        OverrideOptions(services, primaryChangelog: primaryChangelog);
+
+        const string lastChangeSha = "last-change-sha";
+        SetupLocalRepository(services, lastChangeSha, [new("some-sha", "fgdfgs (#5234)")]);
+
+        services.RemoveAll<IGitHubPullRequestService>();
+        var ghService = Substitute.For<IGitHubPullRequestService>();
+        ghService.GetDiff(lastChangeSha)
+                 .Returns(new GitHubDiff(
+                     [
+                         new GitHubPullRequest(
+                             Merged: true,
+                             """
+                             Big update with many changes!
+
+                             :cl:
+                             - add: Added something new
+                             - fix: Fixed a bug
+                             - tweak: Tweaked some values
+                             - remove: Removed old thing
+                             """,
+                             new GitHubUser("MultiChangeUser"),
+                             new DateTimeOffset(new DateTime(2023,8,20,9,30,0), TimeSpan.Zero),
+                             new GitHubPullRequestBase("master"),
+                             Number: 150,
+                             "https://example.com/pr/150"
+                         )
+                     ],
+                     []
+                 ));
+        services.AddSingleton(ghService);
+
+
+        var virtualDir = CopyExistingChangelogs();
+        var sp = services.BuildServiceProvider();
+        var command = sp.GetRequiredService<RootCommand>();
+
+        // Act
+        var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\" -ac");
+        var invokeResult = parseResult.Invoke(_invocationConfiguration);
+
+        // Assert
+        Assert.Equal(0, invokeResult);
+
+        var changelogPath = Path.Combine(virtualDir, $"{primaryChangelog ?? "Changelog"}.yml");
+        var updatedContent = File.ReadAllText(changelogPath);
+
+        // Verify all change types appear
+        Assert.Contains("Added something new", updatedContent);
+        Assert.Contains("Fixed a bug", updatedContent);
+        Assert.Contains("Tweaked some values", updatedContent);
+        Assert.Contains("Removed old thing", updatedContent);
+    }
+
+
+    [Fact]
+    public void UpdateWithNonExistingFileAndNoAllowCreateFails()
+    {
+        // Arrange
+        var services = new ServiceCollection();
+        services.RegisterDependencies();
+
+        OverrideOptions(services, primaryChangelog: "Gooblog");
 
         const string lastChangeSha = "last-change-sha";
         SetupLocalRepository(services, lastChangeSha, [new("some-sha", "fgdfgs (#5234)")]);
@@ -501,19 +566,9 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
 
         // Act
         var parseResult = command.Parse($"update --changelog-dir \"{virtualDir}\"");
-        var invokeResult = parseResult.Invoke(_invocationConfiguration);
-
+        
         // Assert
-        Assert.Equal(0, invokeResult);
-
-        var changelogPath = Path.Combine(virtualDir, "Changelog.yml");
-        var updatedContent = File.ReadAllText(changelogPath);
-
-        // Verify all change types appear
-        Assert.Contains("Added something new", updatedContent);
-        Assert.Contains("Fixed a bug", updatedContent);
-        Assert.Contains("Tweaked some values", updatedContent);
-        Assert.Contains("Removed old thing", updatedContent);
+        Assert.Throws<InvalidOperationException>(() => parseResult.Invoke(_invocationConfiguration));
     }
 
     [Fact]
@@ -776,7 +831,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
         return tempPath;
     }
 
-    private void OverrideOptions(ServiceCollection services, int? maxLogEntries = null, string? extraCategories = null)
+    private void OverrideOptions(ServiceCollection services, int? maxLogEntries = null, string? extraCategories = null, string? primaryChangelog = null)
     {
         // Route all logging from the commands and their services to the xUnit test output instead of the console.
         services.RemoveAll<ILoggerProvider>();
@@ -793,6 +848,7 @@ public class EndToEndPipelineTest(ITestOutputHelper outputHelper) : IDisposable
             ExtraCategories = extraCategories,
             DiscordWebHook = "https://discord.com/api/webhooks/test",
             DiscordWebhookCharacterLimit = 2000,
+            PrimaryChangelog = primaryChangelog ?? "Changelog",
         };
         services.AddSingleton(Microsoft.Extensions.Options.Options.Create(config));
     }

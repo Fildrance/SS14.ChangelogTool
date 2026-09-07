@@ -22,10 +22,14 @@ public interface IChangelogFileManager
     /// <param name="changelogParts">Changelog entries grouped by changelog category.</param>
     /// <param name="revertedPullRequestNumbers">PR numbers whose changelog entries should be removed.</param>
     /// <param name="changelogDir">Directory, in which changelog files are.</param>
+    /// <param name="canCreate">
+    /// Marker, if missing changelog file should be created, or exception should be thrown on detecting missing file.
+    /// </param>
     void UpdateChangelogs(
         Dictionary<string, List<ChangelogEntry>> changelogParts,
         IReadOnlyCollection<int> revertedPullRequestNumbers,
-        string changelogDir);
+        string changelogDir,
+        bool canCreate = false);
 
     /// <summary>
     /// Get newest changelog entry by PR merge datetime from changelog files in directory.

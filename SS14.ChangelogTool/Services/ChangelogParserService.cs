@@ -50,13 +50,15 @@ public partial class ChangelogParserService(ILogger<ChangelogParserService> logg
         var allCategories = new HashSet<string> { Constants.MainCategory };
         allCategories.UnionWith(extraCategories);
 
-        var body = CommentRegex().Replace(pr.Body, "");
+        var body = CommentRegex().Replace(pr.Body ?? "", "");
 
         var match = ChangelogHeaderRegex().Match(body);
         if (!match.Success)
             return [];
 
-        var author = match.Groups[1].Success ? match.Groups[1].Value.Trim() : pr.User.Login;
+        // GitHub returns "author: null" for pull requests whose author account was deleted,
+        // which deserializes User to null; fall back to a placeholder in that case.
+        var author = match.Groups[1].Success ? match.Groups[1].Value.Trim() : pr.Author?.Login ?? "Unknown";
         var changelogBody = body.Substring(match.Index + match.Length);
 
         var currentCategory = Constants.MainCategory;
@@ -87,19 +89,18 @@ public partial class ChangelogParserService(ILogger<ChangelogParserService> logg
             if (!entryMatch.Success)
                 continue;
 
-            var type = entryMatch.Groups[1].Value.ToLowerInvariant() switch
+            ChangeType type = entryMatch.Groups[1].Value.ToLowerInvariant() switch
             {
                 "add" => ChangeType.Add,
                 "remove" => ChangeType.Remove,
                 "fix" or "bugfix" or "bug" => ChangeType.Fix,
                 "tweak" => ChangeType.Tweak,
-                _ => (ChangeType?)null,
+                _ => ChangeType.Unknown,
             };
 
             var message = entryMatch.Groups[2].Value.Trim();
 
-            if (type is { } t)
-                entries.Add((currentCategory, new ChangeDescription(t, message)));
+            entries.Add((currentCategory, new ChangeDescription(type, message)));
         }
 
         return entries
@@ -109,7 +110,7 @@ public partial class ChangelogParserService(ILogger<ChangelogParserService> logg
                 x => new ChangelogEntry
                 {
                     Number = pr.Number,
-                    Url = pr.Html_url,
+                    Url = pr.Url,
                     Author = author,
                     Changes = x.Select(c => c.ChangeDone)
                         .ToList(),

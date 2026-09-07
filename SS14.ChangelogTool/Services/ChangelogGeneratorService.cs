@@ -41,6 +41,9 @@ public class ChangelogGeneratorService(
         // Get the list of PRs that were merged since last time.
         var diff = await githubService.GetDiff(lastMergeSha);
 
+        if(logger.IsEnabled(LogLevel.Trace))
+            logger.LogTrace("Got pull requests: \r\n{entries}", string.Join(", ", diff.PullRequests.Select(x=>x.Url)));
+
         logger.LogInformation(
             "Collected {PullRequestCount} pull requests and {RevertedPullRequestCount} reverted pull requests.",
             diff.PullRequests.Count,
@@ -49,6 +52,9 @@ public class ChangelogGeneratorService(
 
         // Generate a new YMLfest out of this
         var changelogs = parserService.ExtractChangelogEntries(diff.PullRequests, extraCategories);
+
+        if(logger.IsEnabled(LogLevel.Trace))
+            logger.LogTrace("After testing patterns and checking pull request details got: \r\n{entries}", string.Join(", ", changelogs.SelectMany(x => x.Value).Select(x => x.Url)));
 
         if (changelogs.Count == 0 && diff.RevertedPullRequestNumbers.Count == 0)
         {

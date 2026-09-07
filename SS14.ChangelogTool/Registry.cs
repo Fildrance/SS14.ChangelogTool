@@ -44,7 +44,7 @@ public static class Registry
         services.AddSingleton<IPullRequestParserService, ChangelogParserService>();
         services.AddSingleton<IGitHubPullRequestService, GitHubPullRequestService>();
         services.AddSingleton<ILocalGitRepository, LocalGitRepository>();
-        services.AddSingleton<IGithubPullRequestClient, GithubPullRequestClient>();
+        services.AddSingleton<IGithubGraphQLClient, GithubGraphQLClient>();
 
         #region clients of different flavours
 
@@ -70,7 +70,7 @@ public static class Registry
         {
             var clientFactory = sp.GetRequiredService<IHttpClientFactory>();
             var client = clientFactory.CreateClient(nameof(GraphQLHttpClient));
-            return new GraphQLHttpClient(GithubPullRequestClient.GithubGraphQLApiBase, new SystemTextJsonSerializer(), client);
+            return new GraphQLHttpClient(GithubGraphQLClient.GithubGraphQLApiBase, new SystemTextJsonSerializer(), client);
         });
 
         #endregion
